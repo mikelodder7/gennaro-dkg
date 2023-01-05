@@ -1,9 +1,9 @@
+use elliptic_curve::group::GroupEncoding;
+use elliptic_curve::{Group, PrimeField};
 use gennaro_dkg::*;
-use vsss_rs::{Shamir, Share, curve25519::*};
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
-use elliptic_curve::{Group, PrimeField};
-use elliptic_curve::group::GroupEncoding;
+use vsss_rs::{curve25519::*, Shamir, Share};
 
 #[test]
 fn three_participants_k256() {
@@ -98,7 +98,11 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
         assert!(p.round5(&r4bdata).is_ok());
     }
 
-    let res = Shamir { t: THRESHOLD, n: LIMIT }.combine_shares::<G::Scalar>(&r4shares);
+    let res = Shamir {
+        t: THRESHOLD,
+        n: LIMIT,
+    }
+    .combine_shares::<G::Scalar>(&r4shares);
     assert!(res.is_ok());
     let secret = res.unwrap();
 

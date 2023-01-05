@@ -144,9 +144,15 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round1P2PData {
-    #[serde(serialize_with = "serialize_share", deserialize_with = "deserialize_share")]
+    #[serde(
+        serialize_with = "serialize_share",
+        deserialize_with = "deserialize_share"
+    )]
     secret_share: Share,
-    #[serde(serialize_with = "serialize_share", deserialize_with = "deserialize_share")]
+    #[serde(
+        serialize_with = "serialize_share",
+        deserialize_with = "deserialize_share"
+    )]
     blind_share: Share,
 }
 
@@ -246,7 +252,10 @@ fn deserialize_share<'de, D: Deserializer<'de>>(d: D) -> Result<Share, D::Error>
             write!(f, "a base64 encoded string")
         }
 
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: DError {
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: DError,
+        {
             let bytes = base64_url::decode(v)
                 .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
             Ok(Share(bytes))
@@ -644,7 +653,11 @@ mod tests {
             assert!(p.round5(&r4bdata).is_ok());
         }
 
-        let res = Shamir { t: THRESHOLD, n: LIMIT }.combine_shares::<G::Scalar>(&r4shares);
+        let res = Shamir {
+            t: THRESHOLD,
+            n: LIMIT,
+        }
+        .combine_shares::<G::Scalar>(&r4shares);
         assert!(res.is_ok());
         let secret = res.unwrap();
 

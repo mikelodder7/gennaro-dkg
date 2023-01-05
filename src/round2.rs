@@ -63,7 +63,8 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         }
 
         self.valid_participant_ids.clear();
-        self.secret_share = self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
+        self.secret_share =
+            self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
         let og = self.secret_share;
 
         for ((bid, bdata), (pid, p2p)) in broadcast_data.iter().zip(p2p_data.iter()) {
@@ -122,7 +123,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             return Err(Error::RoundError(
                 2,
                 "Not enough valid participants, below the threshold".to_string(),
-            ))
+            ));
         }
 
         self.round = Round::Three;
