@@ -9,6 +9,15 @@
 
 The Gennaro Distributed Key Generation Algorithm as described [here](https://link.springer.com/content/pdf/10.1007/s00145-006-0347-3.pdf)
 
+This crate does not handle creating a secure channel to send data. This is left to consumers.
+
+A good description of methods to do this can be found [here](https://medium.com/zengo/mpc-over-signal-977db599de66).
+
+In a nut shell:
+
+1. Use Signal Protocol since this offers the highest security.
+2. Use the latest version of TLS if you can rely on and trust PKI.
+
 [//]: # (badges)
 
 [crate-image]: https://img.shields.io/crates/v/gennaro-dkg.svg
