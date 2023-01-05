@@ -144,7 +144,9 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round1P2PData {
+    #[serde(serialize_with = "serialize_share", deserialize_with = "deserialize_share")]
     secret_share: Share,
+    #[serde(serialize_with = "serialize_share", deserialize_with = "deserialize_share")]
     blind_share: Share,
 }
 
@@ -223,6 +225,38 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
     /// This value is useless until all rounds have been run
     pub fn get_public_key(&self) -> G {
         self.public_key
+    }
+}
+
+fn serialize_share<S: Serializer>(share: &Share, s: S) -> Result<S::Ok, S::Error> {
+    if s.is_human_readable() {
+        s.serialize_str(&base64_url::encode(share.as_ref()))
+    } else {
+        share.serialize(s)
+    }
+}
+
+fn deserialize_share<'de, D: Deserializer<'de>>(d: D) -> Result<Share, D::Error> {
+    struct ShareVisitor;
+
+    impl<'de> Visitor<'de> for ShareVisitor {
+        type Value = Share;
+
+        fn expecting(&self, f: &mut Formatter) -> std::fmt::Result {
+            write!(f, "a base64 encoded string")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: DError {
+            let bytes = base64_url::decode(v)
+                .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
+            Ok(Share(bytes))
+        }
+    }
+
+    if d.is_human_readable() {
+        d.deserialize_str(ShareVisitor)
+    } else {
+        Share::deserialize(d)
     }
 }
 
@@ -490,5 +524,130 @@ fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Deserializer<'d
         d.deserialize_seq(NonReadableVisitor {
             marker: PhantomData,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vsss_rs::{Shamir, Share};
+
+    #[test]
+    fn one_corrupted_party_k256() {
+        one_corrupted_party::<k256::ProjectivePoint>()
+    }
+
+    #[test]
+    fn one_corrupted_party_p256() {
+        one_corrupted_party::<p256::ProjectivePoint>()
+    }
+
+    #[test]
+    fn one_corrupted_party_curve25519() {
+        one_corrupted_party::<vsss_rs::curve25519::WrappedRistretto>();
+        one_corrupted_party::<vsss_rs::curve25519::WrappedEdwards>();
+    }
+
+    #[test]
+    fn one_corrupted_party_bls12_381() {
+        one_corrupted_party::<bls12_381_plus::G1Projective>();
+        one_corrupted_party::<bls12_381_plus::G2Projective>();
+    }
+
+    fn one_corrupted_party<G: Group + GroupEncoding + Default>() {
+        const THRESHOLD: usize = 2;
+        const LIMIT: usize = 4;
+        const BAD_ID: usize = 4;
+
+        let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
+        let limit = NonZeroUsize::new(LIMIT).unwrap();
+        let parameters = Parameters::<G>::new(threshold, limit);
+        let mut participants = [
+            Participant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
+            Participant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
+            Participant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
+            Participant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
+        ];
+
+        let mut r1bdata = Vec::with_capacity(LIMIT);
+        let mut r1p2pdata = Vec::with_capacity(LIMIT);
+        for p in participants.iter_mut() {
+            let (broadcast, p2p) = p.round1().expect("Round 1 should work");
+            r1bdata.push(broadcast);
+            r1p2pdata.push(p2p);
+        }
+        for p in participants.iter_mut() {
+            assert!(p.round1().is_err());
+        }
+
+        // Corrupt bad actor
+        for i in 0..THRESHOLD {
+            r1bdata[BAD_ID - 1].pedersen_commitments[i] = G::identity();
+        }
+
+        let mut r2bdata = BTreeMap::new();
+
+        for i in 0..LIMIT {
+            let mut bdata = BTreeMap::new();
+            let mut p2pdata = BTreeMap::new();
+
+            let my_id = participants[i].get_id();
+            for j in 0..LIMIT {
+                let pp = &participants[j];
+                let id = pp.get_id();
+                if my_id == id {
+                    continue;
+                }
+                bdata.insert(id, r1bdata[id - 1].clone());
+                p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
+            }
+            let p = &mut participants[i];
+            let res = p.round2(bdata, p2pdata);
+            assert!(res.is_ok());
+            if my_id == BAD_ID {
+                continue;
+            }
+            r2bdata.insert(my_id, res.unwrap());
+        }
+
+        let mut r3bdata = BTreeMap::new();
+        for p in participants.iter_mut() {
+            if BAD_ID == p.get_id() {
+                continue;
+            }
+            let res = p.round3(&r2bdata);
+            assert!(res.is_ok());
+            r3bdata.insert(p.get_id(), res.unwrap());
+            assert!(p.round3(&r2bdata).is_err());
+        }
+
+        let mut r4bdata = BTreeMap::new();
+        let mut r4shares = Vec::with_capacity(LIMIT);
+        for p in participants.iter_mut() {
+            if BAD_ID == p.get_id() {
+                continue;
+            }
+            let res = p.round4(&r3bdata);
+            assert!(res.is_ok());
+            let (bdata, share) = res.unwrap();
+            r4bdata.insert(p.get_id(), bdata);
+            let mut pshare = share.to_repr().as_ref().to_vec();
+            pshare.insert(0, p.get_id() as u8);
+            r4shares.push(Share(pshare));
+            assert!(p.round4(&r3bdata).is_err());
+        }
+
+        for p in &participants {
+            if BAD_ID == p.get_id() {
+                continue;
+            }
+            assert!(p.round5(&r4bdata).is_ok());
+        }
+
+        let res = Shamir { t: THRESHOLD, n: LIMIT }.combine_shares::<G::Scalar>(&r4shares);
+        assert!(res.is_ok());
+        let secret = res.unwrap();
+
+        assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
     }
 }

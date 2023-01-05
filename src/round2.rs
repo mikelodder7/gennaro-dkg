@@ -62,6 +62,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             ));
         }
 
+        self.valid_participant_ids.clear();
         self.secret_share = self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
         let og = self.secret_share;
 
@@ -76,6 +77,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             // If not using the same generator then its a problem
             if bdata.blinder_generator != self.components.verifier.generator
                 || bdata.message_generator != self.components.verifier.feldman_verifier.generator
+                || bdata.pedersen_commitments.len() != self.threshold
             {
                 continue;
             }
@@ -115,9 +117,16 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
                 "The resulting secret key share is invalid".to_string(),
             ));
         }
+        self.valid_participant_ids.insert(self.id);
+        if self.valid_participant_ids.len() < self.threshold {
+            return Err(Error::RoundError(
+                2,
+                "Not enough valid participants, below the threshold".to_string(),
+            ))
+        }
+
         self.round = Round::Three;
         // Include own id in valid set
-        self.valid_participant_ids.insert(self.id);
         self.round1_p2p_data = p2p_data;
         self.round1_broadcast_data = broadcast_data;
 
