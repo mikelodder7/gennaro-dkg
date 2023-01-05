@@ -24,8 +24,8 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
     /// Returns the data needed for round 2
     pub fn round2(
         &mut self,
-        broadcast_data: &BTreeMap<usize, Round1BroadcastData<G>>,
-        p2p_data: &BTreeMap<usize, Round1P2PData>,
+        broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
+        p2p_data: BTreeMap<usize, Round1P2PData>,
     ) -> DkgResult<Round2EchoBroadcastData> {
         if !matches!(self.round, Round::Two) {
             return Err(Error::RoundError(2, "Invalid Round".to_string()));
@@ -63,6 +63,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         }
 
         let mut sk = self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
+        let og = sk;
 
         for ((bid, bdata), (pid, p2p)) in broadcast_data.iter().zip(p2p_data.iter()) {
             if bid != pid {
@@ -71,16 +72,10 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
                     format!("Missing data from participant {}", *bid),
                 ));
             }
-            if !self.round1_p2p_data.contains_key(pid) {
-                return Err(Error::RoundError(
-                    2,
-                    format!("Unknown participant id '{}'", *pid),
-                ));
-            }
 
             // If not using the same generator then its a problem
-            if bdata.message_generator != self.components.verifier.generator
-                || bdata.blinder_generator != self.components.verifier.feldman_verifier.generator
+            if bdata.blinder_generator != self.components.verifier.generator
+                || bdata.message_generator != self.components.verifier.feldman_verifier.generator
             {
                 continue;
             }
@@ -114,7 +109,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             }
         }
 
-        if sk.is_zero().unwrap_u8() == 1u8 {
+        if sk.is_zero().unwrap_u8() == 1u8 || sk == og {
             return Err(Error::RoundError(
                 2,
                 "The resulting secret key share is invalid".to_string(),
@@ -123,6 +118,9 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         self.round = Round::Three;
         // Include own id in valid set
         self.valid_participant_ids.insert(self.id);
+        self.round1_p2p_data = p2p_data;
+        self.round1_broadcast_data = broadcast_data;
+        self.secret_share = sk;
 
         let echo_data = Round2EchoBroadcastData {
             valid_participant_ids: self.valid_participant_ids.clone(),

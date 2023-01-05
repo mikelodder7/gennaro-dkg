@@ -11,16 +11,71 @@ mod round5;
 
 use elliptic_curve::group::{Group, GroupEncoding};
 use elliptic_curve::{Field, PrimeField};
+use rand_core::SeedableRng;
 use serde::de::{Error as DError, SeqAccess, Unexpected, Visitor};
 use serde::ser::{SerializeSeq, SerializeTuple};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Formatter;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use uint_zigzag::Uint;
 use vsss_rs::{FeldmanVerifier, Pedersen, PedersenResult, PedersenVerifier, Share};
 
 pub use error::*;
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
+pub struct Parameters<G: Group + GroupEncoding + Default> {
+    threshold: usize,
+    limit: usize,
+    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
+    message_generator: G,
+    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
+    blinder_generator: G,
+}
+
+impl<G: Group + GroupEncoding + Default> Default for Parameters<G> {
+    fn default() -> Self {
+        Self {
+            threshold: 0,
+            limit: 0,
+            message_generator: G::identity(),
+            blinder_generator: G::identity(),
+        }
+    }
+}
+
+impl<G: Group + GroupEncoding + Default> Parameters<G> {
+    /// Create regular parameters with the message_generator as the default generator
+    /// and a random blinder_generator
+    pub fn new(threshold: NonZeroUsize, limit: NonZeroUsize) -> Self {
+        let message_generator = G::generator();
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&message_generator.to_bytes().as_ref()[0..32]);
+        let rng = rand_chacha::ChaChaRng::from_seed(seed);
+        Self {
+            threshold: threshold.get(),
+            limit: limit.get(),
+            message_generator: G::generator(),
+            blinder_generator: G::random(rng),
+        }
+    }
+
+    /// Use the provided parameters
+    pub fn with_generators(
+        threshold: NonZeroUsize,
+        limit: NonZeroUsize,
+        message_generator: G,
+        blinder_generator: G,
+    ) -> Self {
+        Self {
+            threshold: threshold.get(),
+            limit: limit.get(),
+            message_generator,
+            blinder_generator,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Participant<G: Group + GroupEncoding + Default> {
@@ -31,7 +86,10 @@ pub struct Participant<G: Group + GroupEncoding + Default> {
     threshold: usize,
     limit: usize,
     round: Round,
-    #[serde(serialize_with = "serialize_scalar", deserialize_with = "deserialize_scalar")]
+    #[serde(
+        serialize_with = "serialize_scalar",
+        deserialize_with = "deserialize_scalar"
+    )]
     secret_share: G::Scalar,
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     public_key: G,
@@ -49,7 +107,7 @@ pub enum Round {
     Five,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     message_generator: G,
@@ -62,12 +120,12 @@ pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
     pedersen_commitments: Vec<G>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Round2EchoBroadcastData {
     valid_participant_ids: BTreeSet<usize>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     message_generator: G,
@@ -78,13 +136,13 @@ pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
     commitments: Vec<G>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    public_key: G,
+    pub public_key: G,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Round1P2PData {
     secret_share: Share,
     blind_share: Share,
@@ -92,17 +150,21 @@ pub struct Round1P2PData {
 
 impl<G: Group + GroupEncoding + Default> Participant<G> {
     /// Create a new participant to generate a new key share
-    pub fn new(id: usize, threshold: usize, limit: usize) -> DkgResult<Self> {
+    pub fn new(id: NonZeroUsize, parameters: Parameters<G>) -> DkgResult<Self> {
         let mut rng = rand_core::OsRng;
         let secret = G::Scalar::random(&mut rng);
         let blinder = G::Scalar::random(&mut rng);
         let pedersen = Pedersen {
-            t: threshold,
-            n: limit,
+            t: parameters.threshold,
+            n: parameters.limit,
         };
-        let generator = G::generator();
-        let components =
-            pedersen.split_secret(secret, Some(blinder), Some(generator), None, &mut rng)?;
+        let components = pedersen.split_secret(
+            secret,
+            Some(blinder),
+            Some(parameters.message_generator),
+            Some(parameters.blinder_generator),
+            &mut rng,
+        )?;
 
         if (components.verifier.generator.is_identity()
             | components.verifier.feldman_verifier.generator.is_identity())
@@ -133,10 +195,10 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             return Err(Error::InitializationError("Invalid shares".to_string()));
         }
         Ok(Self {
-            id,
+            id: id.get(),
             components,
-            threshold,
-            limit,
+            threshold: parameters.threshold,
+            limit: parameters.limit,
             round: Round::One,
             round1_broadcast_data: BTreeMap::new(),
             round1_p2p_data: BTreeMap::new(),
@@ -164,10 +226,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
     }
 }
 
-fn serialize_scalar<F: PrimeField, S: Serializer>(
-    scalar: &F,
-    s: S
-) -> Result<S::Ok, S::Error> {
+fn serialize_scalar<F: PrimeField, S: Serializer>(scalar: &F, s: S) -> Result<S::Ok, S::Error> {
     let v = scalar.to_repr();
     let vv = v.as_ref();
     if s.is_human_readable() {
@@ -184,7 +243,7 @@ fn serialize_scalar<F: PrimeField, S: Serializer>(
 
 fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<F, D::Error> {
     struct ScalarVisitor<F: PrimeField> {
-        marker: PhantomData<F>
+        marker: PhantomData<F>,
     }
 
     impl<'de, F: PrimeField> Visitor<'de> for ScalarVisitor<F> {
@@ -194,8 +253,12 @@ fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<
             write!(f, "a byte sequence")
         }
 
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: DError {
-            let bytes = base64_url::decode(v).map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: DError,
+        {
+            let bytes = base64_url::decode(v)
+                .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
             let mut repr = F::default().to_repr();
             repr.as_mut().copy_from_slice(bytes.as_slice());
             let sc = F::from_repr(repr);
@@ -206,7 +269,10 @@ fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<
             }
         }
 
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
             let mut repr = F::default().to_repr();
             let mut i = 0;
             let len = repr.as_ref().len();
@@ -216,7 +282,7 @@ fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<
                 if i == len {
                     let sc = F::from_repr(repr);
                     if sc.is_some().unwrap_u8() == 1u8 {
-                        return Ok(sc.unwrap())
+                        return Ok(sc.unwrap());
                     }
                 }
             }
@@ -225,7 +291,7 @@ fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<
     }
 
     let vis = ScalarVisitor {
-         marker: PhantomData::<F>
+        marker: PhantomData::<F>,
     };
     if d.is_human_readable() {
         d.deserialize_str(vis)
