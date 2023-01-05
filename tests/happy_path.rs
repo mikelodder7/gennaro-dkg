@@ -17,7 +17,14 @@ fn three_participants_p256() {
 
 #[test]
 fn three_participants_curve25519() {
-    three_participants::<WrappedRistretto>()
+    three_participants::<WrappedRistretto>();
+    three_participants::<WrappedEdwards>();
+}
+
+#[test]
+fn three_participants_bls12381() {
+    three_participants::<bls12_381_plus::G1Projective>();
+    three_participants::<bls12_381_plus::G2Projective>();
 }
 
 fn three_participants<G: Group + GroupEncoding + Default>() {

@@ -62,8 +62,8 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             ));
         }
 
-        let mut sk = self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
-        let og = sk;
+        self.secret_share = self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
+        let og = self.secret_share;
 
         for ((bid, bdata), (pid, p2p)) in broadcast_data.iter().zip(p2p_data.iter()) {
             if bid != pid {
@@ -104,12 +104,12 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             }
 
             if let Ok(s) = p2p.secret_share.as_field_element::<G::Scalar>() {
-                sk += s;
+                self.secret_share += s;
                 self.valid_participant_ids.insert(*bid);
             }
         }
 
-        if sk.is_zero().unwrap_u8() == 1u8 || sk == og {
+        if self.secret_share.is_zero().unwrap_u8() == 1u8 || self.secret_share == og {
             return Err(Error::RoundError(
                 2,
                 "The resulting secret key share is invalid".to_string(),
@@ -120,7 +120,6 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         self.valid_participant_ids.insert(self.id);
         self.round1_p2p_data = p2p_data;
         self.round1_broadcast_data = broadcast_data;
-        self.secret_share = sk;
 
         let echo_data = Round2EchoBroadcastData {
             valid_participant_ids: self.valid_participant_ids.clone(),
