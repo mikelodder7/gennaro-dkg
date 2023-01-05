@@ -15,7 +15,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
     pub fn round4(
         &mut self,
         broadcast_data: &BTreeMap<usize, Round3BroadcastData<G>>,
-    ) -> DkgResult<(Round4EchoBroadcastData<G>, G::Scalar)> {
+    ) -> DkgResult<Round4EchoBroadcastData<G>> {
         if !matches!(self.round, Round::Four) {
             return Err(Error::RoundError(4, "Invalid Round.".to_string()));
         }
@@ -97,11 +97,9 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         }
         self.round = Round::Five;
 
-        Ok((
-            Round4EchoBroadcastData {
+        Ok(Round4EchoBroadcastData {
                 public_key: self.public_key,
             },
-            self.secret_share,
-        ))
+        )
     }
 }

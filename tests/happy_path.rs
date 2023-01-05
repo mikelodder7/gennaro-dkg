@@ -86,7 +86,8 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     for p in participants.iter_mut() {
         let res = p.round4(&r3bdata);
         assert!(res.is_ok());
-        let (bdata, share) = res.unwrap();
+        let bdata = res.unwrap();
+        let share = p.get_secret_share();
         r4bdata.insert(p.get_id(), bdata);
         let mut pshare = share.to_repr().as_ref().to_vec();
         pshare.insert(0, p.get_id() as u8);

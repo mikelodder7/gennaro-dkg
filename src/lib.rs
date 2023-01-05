@@ -1,6 +1,202 @@
-pub extern crate elliptic_curve;
-pub extern crate rand_core;
-pub extern crate vsss_rs;
+//! Gennaro's Distributed Key Generation Algorithm.
+//!
+//! The algorithm uses participants with unique identifiers
+//! and each party communicates broadcast data and peer-to-peer
+//! data depending on the round. Round 1 generates participant key shares
+//! which are checked for correctness in round 2. Any participant that fails
+//! in round 2 is dropped from the valid set which is communicated in round 3.
+//! Round 4 communicates only with the remaining valid participants
+//! and computes the secret share and verification key. Round 5 checks that
+//! all participants computed the same verification key.
+//!
+//! The idea is that Rounds 3 and 5 serve as echo broadcasts to check the
+//! state of all valid participants. If an error occurs in any round, then
+//! participants either drop invalid participants or abort.
+//!
+//! The full paper can be found
+//! <https://link.springer.com/content/pdf/10.1007/s00145-006-0347-3.pdf>.
+//!
+//! The interface has been written to work with anything that implements the elliptic-curve::Group
+//! trait.
+//!
+//! An example for generating a secret key on the Secp256k1 curve with 2 out of 3 participants.
+//!
+//! ```
+//! use elliptic_curve::{Group, PrimeField};
+//! use gennaro_dkg::*;
+//! use k256::{ProjectivePoint, Scalar};
+//! use maplit::btreemap;
+//! use std::{
+//!     collections::BTreeMap,
+//!     num::NonZeroUsize,
+//! };
+//! use vsss_rs::{Shamir, Share};
+//!
+//! let parameters = Parameters::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(3).unwrap());
+//!
+//! let mut participant1 = Participant::<ProjectivePoint>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap();
+//! let mut participant2 = Participant::<ProjectivePoint>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap();
+//! let mut participant3 = Participant::<ProjectivePoint>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap();
+//!
+//! // Round 1
+//! let (b1data1, p2p1data) = participant1.round1().unwrap();
+//! let (b2data1, p2p2data) = participant2.round1().unwrap();
+//! let (b3data1, p2p3data) = participant3.round1().unwrap();
+//!
+//! // Can't call the same round twice
+//! assert!(participant1.round1().is_err());
+//! assert!(participant2.round1().is_err());
+//! assert!(participant3.round1().is_err());
+//!
+//! // Send b1data1 to participant 2 and 3
+//! // Send b2data1 to participant 1 and 3
+//! // Send b3data1 to participant 1 and 2
+//!
+//! // Send p2p1data[&2] to participant 2
+//! // Send p2p1data[&3] to participant 3
+//!
+//! // Send p2p2data[&1] to participant 1
+//! // Send p2p2data[&3] to participant 3
+//!
+//! // Send p2p3data[&1] to participant 1
+//! // Send p2p3data[&2] to participant 2
+//!
+//! let p1bdata1 = btreemap! {
+//!     2 => b2data1.clone(),
+//!     3 => b3data1.clone(),
+//! };
+//! let p1pdata = btreemap! {
+//!     2 => p2p2data[&1].clone(),
+//!     3 => p2p3data[&1].clone(),
+//! };
+//! let b1data2 = participant1.round2(p1bdata1, p1pdata).unwrap();
+//!
+//! let p2bdata1 = btreemap! {
+//!     1 => b1data1.clone(),
+//!     3 => b3data1.clone(),
+//! };
+//! let p2pdata = btreemap! {
+//!     1 => p2p1data[&2].clone(),
+//!     3 => p2p3data[&2].clone(),
+//! };
+//! let b2data2 = participant2.round2(p2bdata1, p2pdata).unwrap();
+//!
+//! let p3bdata1 = btreemap! {
+//!     1 => b1data1.clone(),
+//!     2 => b2data1.clone(),
+//! };
+//! let p3pdata = btreemap! {
+//!     1 => p2p1data[&3].clone(),
+//!     2 => p2p2data[&3].clone(),
+//! };
+//! let b3data2 = participant3.round2(p3bdata1, p3pdata).unwrap();
+//!
+//! // Send b1data2 to participants 2 and 3
+//! // Send b2data2 to participants 1 and 3
+//! // Send b3data2 to participants 1 and 2
+//!
+//! // This is an optimization for the example in reality each participant computes this
+//! let bdata2 = btreemap! {
+//!     1 => b1data2,
+//!     2 => b2data2,
+//!     3 => b3data2,
+//! };
+//!
+//! let b1data3 = participant1.round3(&bdata2).unwrap();
+//! let b2data3 = participant2.round3(&bdata2).unwrap();
+//! let b3data3 = participant3.round3(&bdata2).unwrap();
+//!
+//! // Send b1data3 to participants 2 and 3
+//! // Send b2data3 to participants 1 and 3
+//! // Send b3data3 to participants 1 and 2
+//!
+//! // This is an optimization for the example in reality each participant computes this
+//! let bdata3 = btreemap! {
+//!     1 => b1data3,
+//!     2 => b2data3,
+//!     3 => b3data3,
+//! };
+//!
+//! let b1data4 = participant1.round4(&bdata3).unwrap();
+//! let b2data4 = participant2.round4(&bdata3).unwrap();
+//! let b3data4 = participant3.round4(&bdata3).unwrap();
+//!
+//! // Send b1data4 to participants 2 and 3
+//! // Send b2data4 to participants 1 and 3
+//! // Send b3data4 to participants 1 and 2
+//!
+//! // Verify that the same key is computed then done
+//!
+//! // This is an optimization for the example in reality each participant computes this
+//! let bdata4 = btreemap! {
+//!     1 => b1data4,
+//!     2 => b2data4,
+//!     3 => b3data4,
+//! };
+//!
+//! assert!(participant1.round5(&bdata4).is_ok());
+//! assert!(participant2.round5(&bdata4).is_ok());
+//! assert!(participant3.round5(&bdata4).is_ok());
+//!
+//! // Get the verification key
+//! let pk1 = participant1.get_public_key();
+//! // Get the secret share
+//! let share1 = participant1.get_secret_share();
+//!
+//! assert_eq!(pk1.is_identity().unwrap_u8(), 0u8);
+//! assert_eq!(share1.is_zero().unwrap_u8(), 0u8);
+//!
+//! let pk2 = participant2.get_public_key();
+//! let share2 = participant2.get_secret_share();
+//!
+//! assert_eq!(pk2.is_identity().unwrap_u8(), 0u8);
+//! assert_eq!(share2.is_zero().unwrap_u8(), 0u8);
+//!
+//! let pk3 = participant3.get_public_key();
+//! let share3 = participant3.get_secret_share();
+//!
+//! assert_eq!(pk3.is_identity().unwrap_u8(), 0u8);
+//! assert_eq!(share3.is_zero().unwrap_u8(), 0u8);
+//!
+//! // Public keys will be equal
+//! assert_eq!(pk1, pk2);
+//! assert_eq!(pk2, pk3);
+//! // Shares should not be
+//! assert_ne!(share1, share2);
+//! assert_ne!(share1, share3);
+//! assert_ne!(share2, share3);
+//!
+//! // For demonstration purposes, the shares if collected can be combined to recreate
+//! // the computed secret
+//!
+//! let mut s1 = share1.to_repr().to_vec();
+//! let mut s2 = share2.to_repr().to_vec();
+//! let mut s3 = share3.to_repr().to_vec();
+//!
+//! s1.insert(0, 1u8);
+//! s2.insert(0, 2u8);
+//! s3.insert(0, 3u8);
+//!
+//! let sk = Shamir { t: 2, n: 3 }.combine_shares::<Scalar>(&[Share(s1), Share(s2), Share(s3)]).unwrap();
+//! let computed_pk = ProjectivePoint::GENERATOR * sk;
+//! assert_eq!(computed_pk, pk1);
+//! ```
+#![deny(
+    missing_docs,
+    unused_import_braces,
+    unused_qualifications,
+    unused_parens,
+    unused_lifetimes,
+    unconditional_recursion,
+    unused_extern_crates,
+    trivial_casts,
+    trivial_numeric_casts
+)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+pub use elliptic_curve;
+pub use rand_core;
+pub use vsss_rs;
 
 mod error;
 mod round1;
@@ -9,21 +205,27 @@ mod round3;
 mod round4;
 mod round5;
 
-use elliptic_curve::group::{Group, GroupEncoding};
-use elliptic_curve::{Field, PrimeField};
+use elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField};
 use rand_core::SeedableRng;
-use serde::de::{Error as DError, SeqAccess, Unexpected, Visitor};
-use serde::ser::{SerializeSeq, SerializeTuple};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Formatter;
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
+use serde::{
+    de::{Error as DError, SeqAccess, Unexpected, Visitor},
+    ser::{SerializeSeq, SerializeTuple},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Formatter,
+    marker::PhantomData,
+    num::NonZeroUsize,
+};
 use uint_zigzag::Uint;
 use vsss_rs::{FeldmanVerifier, Pedersen, PedersenResult, PedersenVerifier, Share};
 
 pub use error::*;
 
+/// The parameters used by the DKG participants.
+/// This must be the same for all of them otherwise the protocol
+/// will abort.
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Parameters<G: Group + GroupEncoding + Default> {
     threshold: usize,
@@ -77,6 +279,7 @@ impl<G: Group + GroupEncoding + Default> Parameters<G> {
     }
 }
 
+/// A DKG participant. Maintains state information for each round
 #[derive(Serialize, Deserialize)]
 pub struct Participant<G: Group + GroupEncoding + Default> {
     id: usize,
@@ -98,8 +301,9 @@ pub struct Participant<G: Group + GroupEncoding + Default> {
     valid_participant_ids: BTreeSet<usize>,
 }
 
+/// Valid rounds
 #[derive(Copy, Clone, Serialize, Deserialize)]
-pub enum Round {
+enum Round {
     One,
     Two,
     Three,
@@ -107,6 +311,7 @@ pub enum Round {
     Five,
 }
 
+/// Broadcast data from round 1 that should be sent to all other participants
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
@@ -120,11 +325,13 @@ pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
     pedersen_commitments: Vec<G>,
 }
 
+/// Echo broadcast data from round 2 that should be sent to all valid participants
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round2EchoBroadcastData {
     valid_participant_ids: BTreeSet<usize>,
 }
 
+/// Broadcast data from round 3 that should be sent to all valid participants
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
@@ -136,12 +343,15 @@ pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
     commitments: Vec<G>,
 }
 
+/// Echo broadcast data from round 4 that should be sent to all valid participants
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
+    /// The computed public key
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     pub public_key: G,
 }
 
+/// Peer data from round 1 that should only be sent to a specific participant
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round1P2PData {
     #[serde(
@@ -638,7 +848,8 @@ mod tests {
             }
             let res = p.round4(&r3bdata);
             assert!(res.is_ok());
-            let (bdata, share) = res.unwrap();
+            let bdata = res.unwrap();
+            let share = p.get_secret_share();
             r4bdata.insert(p.get_id(), bdata);
             let mut pshare = share.to_repr().as_ref().to_vec();
             pshare.insert(0, p.get_id() as u8);
