@@ -181,6 +181,9 @@
 //! let computed_pk = ProjectivePoint::GENERATOR * sk;
 //! assert_eq!(computed_pk, pk1);
 //! ```
+//!
+//! The output of the DKG is the same as if shamir secret sharing
+//! had been run on the secret and sent to separate parties.
 #![deny(
     missing_docs,
     unused_import_braces,
@@ -372,10 +375,37 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         let mut rng = rand_core::OsRng;
         let secret = G::Scalar::random(&mut rng);
         let blinder = G::Scalar::random(&mut rng);
+        Self::initialize(id, parameters, secret, blinder)
+    }
+
+    /// Create a new participant to generate a refresh share.
+    /// This method enables proactive secret sharing.
+    /// The difference between new and refresh is new generates a random secret
+    /// where refresh uses zero as the secret which just alters the polynomial
+    /// when added to the share generated from new but doesn't change the secret itself.
+    ///
+    /// The algorithm runs the same regardless of the value used for secret.
+    ///
+    /// Another approach is to just run the DKG with the same secret since a different
+    /// polynomial will be generated from the share, however, this approach exposes the shares
+    /// if an attacker obtains any traffic. Using zero is safer in this regard and only requires
+    /// an addition to the share upon completion.
+    pub fn refresh(id: NonZeroUsize, parameters: Parameters<G>) -> DkgResult<Self> {
+        let blinder = G::Scalar::random(rand_core::OsRng);
+        Self::initialize(id, parameters, G::Scalar::zero(), blinder)
+    }
+
+    fn initialize(
+        id: NonZeroUsize,
+        parameters: Parameters<G>,
+        secret: G::Scalar,
+        blinder: G::Scalar,
+    ) -> DkgResult<Self> {
         let pedersen = Pedersen {
             t: parameters.threshold,
             n: parameters.limit,
         };
+        let mut rng = rand_core::OsRng;
         let components = pedersen.split_secret(
             secret,
             Some(blinder),
@@ -386,7 +416,7 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
 
         if (components.verifier.generator.is_identity()
             | components.verifier.feldman_verifier.generator.is_identity())
-        .unwrap_u8()
+            .unwrap_u8()
             == 1u8
         {
             return Err(Error::InitializationError("Invalid generators".to_string()));
@@ -397,11 +427,11 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             .iter()
             .any(|c| c.is_identity().unwrap_u8() == 1u8)
             || components
-                .verifier
-                .feldman_verifier
-                .commitments
-                .iter()
-                .any(|c| c.is_identity().unwrap_u8() == 1u8)
+            .verifier
+            .feldman_verifier
+            .commitments
+            .iter()
+            .any(|c| c.is_identity().unwrap_u8() == 1u8)
         {
             return Err(Error::InitializationError(
                 "Invalid commitments".to_string(),
