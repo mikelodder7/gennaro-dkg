@@ -35,9 +35,12 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     let limit = NonZeroUsize::new(LIMIT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
     let mut participants = [
-        Participant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
-        Participant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
-        Participant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
+        SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(1).unwrap(), parameters)
+            .unwrap(),
+        SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(2).unwrap(), parameters)
+            .unwrap(),
+        SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(3).unwrap(), parameters)
+            .unwrap(),
     ];
 
     let mut r1bdata = Vec::with_capacity(LIMIT);
@@ -87,7 +90,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
         let res = p.round4(&r3bdata);
         assert!(res.is_ok());
         let bdata = res.unwrap();
-        let share = p.get_secret_share();
+        let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
         let mut pshare = share.to_repr().as_ref().to_vec();
         pshare.insert(0, p.get_id() as u8);

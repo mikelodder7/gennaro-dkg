@@ -1,7 +1,7 @@
 use super::*;
 use elliptic_curve::group::{Group, GroupEncoding};
 
-impl<G: Group + GroupEncoding + Default> Participant<G> {
+impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
     /// Computes round 3 for this participant.
     ///
     /// This round checks for valid participant ids to make
@@ -17,18 +17,21 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         echo_data: &BTreeMap<usize, Round2EchoBroadcastData>,
     ) -> DkgResult<Round3BroadcastData<G>> {
         if !matches!(self.round, Round::Three) {
-            return Err(Error::RoundError(3, "Invalid Round.".to_string()));
+            return Err(Error::RoundError(
+                Round::Three.into(),
+                format!("Invalid Round, use round{}", self.round),
+            ));
         }
 
         if echo_data.is_empty() {
             return Err(Error::RoundError(
-                3,
+                Round::Three.into(),
                 "Missing broadcast data from other participants. Echo data is empty".to_string(),
             ));
         }
-        if echo_data.len() != self.valid_participant_ids.len() {
+        if echo_data.len() < self.threshold {
             return Err(Error::RoundError(
-                3,
+                Round::Three.into(),
                 "Missing broadcast data from other participants. Non-sufficient echo data provided.".to_string(),
             ));
         }
@@ -38,10 +41,8 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
                 continue;
             }
             if !self.valid_participant_ids.contains(id) {
-                return Err(Error::RoundError(
-                    3,
-                    format!("Received data from malicious participant {}.", *id),
-                ));
+                self.log(ParticipantError::UnexpectedBroadcast(*id));
+                continue;
             }
             if self
                 .valid_participant_ids
@@ -50,9 +51,9 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
                 != 0
             {
                 return Err(Error::RoundError(
-                    3,
+                    Round::Three.into(),
                     format!(
-                        "Received data from malicious participant {}. Valid sets don't match.",
+                        "Received data from malicious secret_participant {}. Valid sets don't match.",
                         *id
                     ),
                 ));

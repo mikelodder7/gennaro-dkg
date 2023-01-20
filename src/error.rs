@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error as DError;
 
 /// Errors produced by the gennaro DKG
@@ -9,8 +10,8 @@ pub enum Error {
     /// Verifiable secret sharing scheme errors
     #[error("vsss error")]
     VsssError(#[from] vsss_rs::Error),
-    /// Errors during participant initialization
-    #[error("error during participant creation: {0}")]
+    /// Errors during secret_participant initialization
+    #[error("error during secret_participant creation: {0}")]
     InitializationError(String),
     /// Errors using rounds
     #[error("round {0} invalid input: `{1}`")]
@@ -19,3 +20,59 @@ pub enum Error {
 
 /// Dkg results
 pub type DkgResult<T> = anyhow::Result<T, Error>;
+
+/// Detailed errors to describe problems that occurred with specific participants
+#[derive(DError, Debug, Deserialize, Serialize)]
+pub enum ParticipantError {
+    /// Round 2 - didn't receive any p2p data from secret_participant
+    #[error("secret_participant {0} has broadcast data but no peer-to-peer data")]
+    MissingP2PData(usize),
+    /// Round 2 - didn't receive any broadcast data from secret_participant
+    #[error("secret_participant {0} has peer-to-peer data but no broadcast data")]
+    MissingBroadcastData(usize),
+    /// Participant is using different parameters than expected
+    #[error("secret_participant {0} is using the different parameters than expected")]
+    MismatchedParameters(usize),
+    /// Participant has identity elements for pedersen commitments
+    #[error("secret_participant {0} has identity element pedersen commitments")]
+    IdentityElementPedersenCommitments(usize),
+    /// Participant has zero value shares
+    #[error("secret_participant {0} has zero value shares")]
+    ZeroValueShares(usize),
+    /// Participant's shares do not verify with the given commitments
+    #[error("secret_participant {0} has shares that do not verify with the given commitments")]
+    NoVerifyShares(usize),
+    /// Participant's shares are not valid field elements
+    #[error("secret_participant {0} has shares that are not in the field")]
+    BadFormatShare(usize),
+    /// Received data from a secret_participant not in the valid set
+    #[error("broadcast data for secret_participant {0} is not expected")]
+    UnexpectedBroadcast(usize),
+    /// Received data from a secret_participant in the valid set but has not peer-to-peer data from round 1
+    #[error("secret_participant {0} is missing peer-to-peer data from round 1")]
+    MissingP2PDataRound1(usize),
+    /// Received data from a secret_participant in the valid set but has not broadcast data from round 1
+    #[error("secret_participant {0} is missing broadcast data from round 1")]
+    MissingBroadcastDataRound1(usize),
+    /// Participant has identity elements for feldman commitments
+    #[error("secret_participant {0} has identity element feldman commitments")]
+    IdentityElementFeldmanCommitments(usize),
+}
+
+// impl ParticipantError {
+//     pub(crate) fn get_participant_id(&self) -> usize {
+//         match self {
+//             Self::MissingP2PData(id) => *id,
+//             Self::MissingBroadcastData(id) => *id,
+//             Self::MismatchedParameters(id) => *id,
+//             Self::IdentityElementPedersenCommitments(id) => *id,
+//             Self::ZeroValueShares(id) => *id,
+//             Self::NoVerifyShares(id) => *id,
+//             Self::BadFormatShare(id) => *id,
+//             Self::UnexpectedBroadcast(id) => *id,
+//             Self::MissingP2PDataRound1(id) => *id,
+//             Self::MissingBroadcastDataRound1(id) => *id,
+//             Self::IdentityElementFeldmanCommitments(id) => *id,
+//         }
+//     }
+// }

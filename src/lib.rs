@@ -2,8 +2,8 @@
 //!
 //! The algorithm uses participants with unique identifiers
 //! and each party communicates broadcast data and peer-to-peer
-//! data depending on the round. Round 1 generates participant key shares
-//! which are checked for correctness in round 2. Any participant that fails
+//! data depending on the round. Round 1 generates secret_participant key shares
+//! which are checked for correctness in round 2. Any secret_participant that fails
 //! in round 2 is dropped from the valid set which is communicated in round 3.
 //! Round 4 communicates only with the remaining valid participants
 //! and computes the secret share and verification key. Round 5 checks that
@@ -34,9 +34,9 @@
 //!
 //! let parameters = Parameters::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(3).unwrap());
 //!
-//! let mut participant1 = Participant::<ProjectivePoint>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap();
-//! let mut participant2 = Participant::<ProjectivePoint>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap();
-//! let mut participant3 = Participant::<ProjectivePoint>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap();
+//! let mut participant1 = SecretParticipant::<ProjectivePoint, DefaultLogger>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap();
+//! let mut participant2 = SecretParticipant::<ProjectivePoint, DefaultLogger>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap();
+//! let mut participant3 = SecretParticipant::<ProjectivePoint, DefaultLogger>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap();
 //!
 //! // Round 1
 //! let (b1data1, p2p1data) = participant1.round1().unwrap();
@@ -48,18 +48,18 @@
 //! assert!(participant2.round1().is_err());
 //! assert!(participant3.round1().is_err());
 //!
-//! // Send b1data1 to participant 2 and 3
-//! // Send b2data1 to participant 1 and 3
-//! // Send b3data1 to participant 1 and 2
+//! // Send b1data1 to secret_participant 2 and 3
+//! // Send b2data1 to secret_participant 1 and 3
+//! // Send b3data1 to secret_participant 1 and 2
 //!
-//! // Send p2p1data[&2] to participant 2
-//! // Send p2p1data[&3] to participant 3
+//! // Send p2p1data[&2] to secret_participant 2
+//! // Send p2p1data[&3] to secret_participant 3
 //!
-//! // Send p2p2data[&1] to participant 1
-//! // Send p2p2data[&3] to participant 3
+//! // Send p2p2data[&1] to secret_participant 1
+//! // Send p2p2data[&3] to secret_participant 3
 //!
-//! // Send p2p3data[&1] to participant 1
-//! // Send p2p3data[&2] to participant 2
+//! // Send p2p3data[&1] to secret_participant 1
+//! // Send p2p3data[&2] to secret_participant 2
 //!
 //! let p1bdata1 = btreemap! {
 //!     2 => b2data1.clone(),
@@ -95,7 +95,7 @@
 //! // Send b2data2 to participants 1 and 3
 //! // Send b3data2 to participants 1 and 2
 //!
-//! // This is an optimization for the example in reality each participant computes this
+//! // This is an optimization for the example in reality each secret_participant computes this
 //! let bdata2 = btreemap! {
 //!     1 => b1data2,
 //!     2 => b2data2,
@@ -110,7 +110,7 @@
 //! // Send b2data3 to participants 1 and 3
 //! // Send b3data3 to participants 1 and 2
 //!
-//! // This is an optimization for the example in reality each participant computes this
+//! // This is an optimization for the example in reality each secret_participant computes this
 //! let bdata3 = btreemap! {
 //!     1 => b1data3,
 //!     2 => b2data3,
@@ -127,7 +127,7 @@
 //!
 //! // Verify that the same key is computed then done
 //!
-//! // This is an optimization for the example in reality each participant computes this
+//! // This is an optimization for the example in reality each secret_participant computes this
 //! let bdata4 = btreemap! {
 //!     1 => b1data4,
 //!     2 => b2data4,
@@ -139,21 +139,21 @@
 //! assert!(participant3.round5(&bdata4).is_ok());
 //!
 //! // Get the verification key
-//! let pk1 = participant1.get_public_key();
+//! let pk1 = participant1.get_public_key().unwrap();
 //! // Get the secret share
-//! let share1 = participant1.get_secret_share();
+//! let share1 = participant1.get_secret_share().unwrap();
 //!
 //! assert_eq!(pk1.is_identity().unwrap_u8(), 0u8);
 //! assert_eq!(share1.is_zero().unwrap_u8(), 0u8);
 //!
-//! let pk2 = participant2.get_public_key();
-//! let share2 = participant2.get_secret_share();
+//! let pk2 = participant2.get_public_key().unwrap();
+//! let share2 = participant2.get_secret_share().unwrap();
 //!
 //! assert_eq!(pk2.is_identity().unwrap_u8(), 0u8);
 //! assert_eq!(share2.is_zero().unwrap_u8(), 0u8);
 //!
-//! let pk3 = participant3.get_public_key();
-//! let share3 = participant3.get_secret_share();
+//! let pk3 = participant3.get_public_key().unwrap();
+//! let share3 = participant3.get_secret_share().unwrap();
 //!
 //! assert_eq!(pk3.is_identity().unwrap_u8(), 0u8);
 //! assert_eq!(share3.is_zero().unwrap_u8(), 0u8);
@@ -202,13 +202,13 @@ pub use rand_core;
 pub use vsss_rs;
 
 mod error;
-mod round1;
-mod round2;
-mod round3;
-mod round4;
-mod round5;
+mod logger;
+mod parameters;
+mod refresh_participant;
+mod secret_participant;
 
 use elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField};
+use log::{Level, Log, Record};
 use rand_core::SeedableRng;
 use serde::{
     de::{Error as DError, SeqAccess, Unexpected, Visitor},
@@ -217,7 +217,7 @@ use serde::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::Formatter,
+    fmt::{self, Display, Formatter},
     marker::PhantomData,
     num::NonZeroUsize,
 };
@@ -225,94 +225,54 @@ use uint_zigzag::Uint;
 use vsss_rs::{FeldmanVerifier, Pedersen, PedersenResult, PedersenVerifier, Share};
 
 pub use error::*;
-
-/// The parameters used by the DKG participants.
-/// This must be the same for all of them otherwise the protocol
-/// will abort.
-#[derive(Copy, Clone, Serialize, Deserialize)]
-pub struct Parameters<G: Group + GroupEncoding + Default> {
-    threshold: usize,
-    limit: usize,
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    message_generator: G,
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    blinder_generator: G,
-}
-
-impl<G: Group + GroupEncoding + Default> Default for Parameters<G> {
-    fn default() -> Self {
-        Self {
-            threshold: 0,
-            limit: 0,
-            message_generator: G::identity(),
-            blinder_generator: G::identity(),
-        }
-    }
-}
-
-impl<G: Group + GroupEncoding + Default> Parameters<G> {
-    /// Create regular parameters with the message_generator as the default generator
-    /// and a random blinder_generator
-    pub fn new(threshold: NonZeroUsize, limit: NonZeroUsize) -> Self {
-        let message_generator = G::generator();
-        let mut seed = [0u8; 32];
-        seed.copy_from_slice(&message_generator.to_bytes().as_ref()[0..32]);
-        let rng = rand_chacha::ChaChaRng::from_seed(seed);
-        Self {
-            threshold: threshold.get(),
-            limit: limit.get(),
-            message_generator: G::generator(),
-            blinder_generator: G::random(rng),
-        }
-    }
-
-    /// Use the provided parameters
-    pub fn with_generators(
-        threshold: NonZeroUsize,
-        limit: NonZeroUsize,
-        message_generator: G,
-        blinder_generator: G,
-    ) -> Self {
-        Self {
-            threshold: threshold.get(),
-            limit: limit.get(),
-            message_generator,
-            blinder_generator,
-        }
-    }
-}
-
-/// A DKG participant. Maintains state information for each round
-#[derive(Serialize, Deserialize)]
-pub struct Participant<G: Group + GroupEncoding + Default> {
-    id: usize,
-    #[serde(bound(serialize = "PedersenResult<G::Scalar, G>: Serialize"))]
-    #[serde(bound(deserialize = "PedersenResult<G::Scalar, G>: Deserialize<'de>"))]
-    components: PedersenResult<G::Scalar, G>,
-    threshold: usize,
-    limit: usize,
-    round: Round,
-    #[serde(
-        serialize_with = "serialize_scalar",
-        deserialize_with = "deserialize_scalar"
-    )]
-    secret_share: G::Scalar,
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    public_key: G,
-    round1_broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
-    round1_p2p_data: BTreeMap<usize, Round1P2PData>,
-    valid_participant_ids: BTreeSet<usize>,
-}
+pub use logger::*;
+pub use parameters::*;
+pub use refresh_participant::*;
+pub use secret_participant::*;
 
 /// Valid rounds
-#[derive(Copy, Clone, Serialize, Deserialize)]
-enum Round {
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+pub(crate) enum Round {
     One,
     Two,
     Three,
     Four,
     Five,
 }
+
+impl Display for Round {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::One => write!(f, "1"),
+            Self::Two => write!(f, "2"),
+            Self::Three => write!(f, "3"),
+            Self::Four => write!(f, "4"),
+            Self::Five => write!(f, "5"),
+        }
+    }
+}
+
+macro_rules! impl_round_to_int {
+    ($ident:ident) => {
+        impl From<Round> for $ident {
+            fn from(value: Round) -> Self {
+                match value {
+                    Round::One => 1,
+                    Round::Two => 2,
+                    Round::Three => 3,
+                    Round::Four => 4,
+                    Round::Five => 5,
+                }
+            }
+        }
+    };
+}
+
+impl_round_to_int!(u8);
+impl_round_to_int!(u16);
+impl_round_to_int!(u32);
+impl_round_to_int!(u64);
+impl_round_to_int!(usize);
 
 /// Broadcast data from round 1 that should be sent to all other participants
 #[derive(Clone, Serialize, Deserialize)]
@@ -354,7 +314,7 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
     pub public_key: G,
 }
 
-/// Peer data from round 1 that should only be sent to a specific participant
+/// Peer data from round 1 that should only be sent to a specific secret_participant
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Round1P2PData {
     #[serde(
@@ -369,112 +329,7 @@ pub struct Round1P2PData {
     blind_share: Share,
 }
 
-impl<G: Group + GroupEncoding + Default> Participant<G> {
-    /// Create a new participant to generate a new key share
-    pub fn new(id: NonZeroUsize, parameters: Parameters<G>) -> DkgResult<Self> {
-        let mut rng = rand_core::OsRng;
-        let secret = G::Scalar::random(&mut rng);
-        let blinder = G::Scalar::random(&mut rng);
-        Self::initialize(id, parameters, secret, blinder)
-    }
-
-    /// Create a new participant to generate a refresh share.
-    /// This method enables proactive secret sharing.
-    /// The difference between new and refresh is new generates a random secret
-    /// where refresh uses zero as the secret which just alters the polynomial
-    /// when added to the share generated from new but doesn't change the secret itself.
-    ///
-    /// The algorithm runs the same regardless of the value used for secret.
-    ///
-    /// Another approach is to just run the DKG with the same secret since a different
-    /// polynomial will be generated from the share, however, this approach exposes the shares
-    /// if an attacker obtains any traffic. Using zero is safer in this regard and only requires
-    /// an addition to the share upon completion.
-    pub fn refresh(id: NonZeroUsize, parameters: Parameters<G>) -> DkgResult<Self> {
-        let blinder = G::Scalar::random(rand_core::OsRng);
-        Self::initialize(id, parameters, G::Scalar::zero(), blinder)
-    }
-
-    fn initialize(
-        id: NonZeroUsize,
-        parameters: Parameters<G>,
-        secret: G::Scalar,
-        blinder: G::Scalar,
-    ) -> DkgResult<Self> {
-        let pedersen = Pedersen {
-            t: parameters.threshold,
-            n: parameters.limit,
-        };
-        let mut rng = rand_core::OsRng;
-        let components = pedersen.split_secret(
-            secret,
-            Some(blinder),
-            Some(parameters.message_generator),
-            Some(parameters.blinder_generator),
-            &mut rng,
-        )?;
-
-        if (components.verifier.generator.is_identity()
-            | components.verifier.feldman_verifier.generator.is_identity())
-            .unwrap_u8()
-            == 1u8
-        {
-            return Err(Error::InitializationError("Invalid generators".to_string()));
-        }
-        if components
-            .verifier
-            .commitments
-            .iter()
-            .any(|c| c.is_identity().unwrap_u8() == 1u8)
-            || components
-            .verifier
-            .feldman_verifier
-            .commitments
-            .iter()
-            .any(|c| c.is_identity().unwrap_u8() == 1u8)
-        {
-            return Err(Error::InitializationError(
-                "Invalid commitments".to_string(),
-            ));
-        }
-        if components.secret_shares.iter().any(|s| s.is_zero())
-            || components.blind_shares.iter().any(|s| s.is_zero())
-        {
-            return Err(Error::InitializationError("Invalid shares".to_string()));
-        }
-        Ok(Self {
-            id: id.get(),
-            components,
-            threshold: parameters.threshold,
-            limit: parameters.limit,
-            round: Round::One,
-            round1_broadcast_data: BTreeMap::new(),
-            round1_p2p_data: BTreeMap::new(),
-            secret_share: G::Scalar::zero(),
-            public_key: G::identity(),
-            valid_participant_ids: BTreeSet::new(),
-        })
-    }
-
-    /// The identifier associated with this participant
-    pub fn get_id(&self) -> usize {
-        self.id
-    }
-
-    /// Computed secret share.
-    /// This value is useless until all rounds have been run
-    pub fn get_secret_share(&self) -> G::Scalar {
-        self.secret_share
-    }
-
-    /// Computed public key
-    /// This value is useless until all rounds have been run
-    pub fn get_public_key(&self) -> G {
-        self.public_key
-    }
-}
-
-fn serialize_share<S: Serializer>(share: &Share, s: S) -> Result<S::Ok, S::Error> {
+pub(crate) fn serialize_share<S: Serializer>(share: &Share, s: S) -> Result<S::Ok, S::Error> {
     if s.is_human_readable() {
         s.serialize_str(&base64_url::encode(share.as_ref()))
     } else {
@@ -482,13 +337,13 @@ fn serialize_share<S: Serializer>(share: &Share, s: S) -> Result<S::Ok, S::Error
     }
 }
 
-fn deserialize_share<'de, D: Deserializer<'de>>(d: D) -> Result<Share, D::Error> {
+pub(crate) fn deserialize_share<'de, D: Deserializer<'de>>(d: D) -> Result<Share, D::Error> {
     struct ShareVisitor;
 
     impl<'de> Visitor<'de> for ShareVisitor {
         type Value = Share;
 
-        fn expecting(&self, f: &mut Formatter) -> std::fmt::Result {
+        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
             write!(f, "a base64 encoded string")
         }
 
@@ -509,7 +364,10 @@ fn deserialize_share<'de, D: Deserializer<'de>>(d: D) -> Result<Share, D::Error>
     }
 }
 
-fn serialize_scalar<F: PrimeField, S: Serializer>(scalar: &F, s: S) -> Result<S::Ok, S::Error> {
+pub(crate) fn serialize_scalar<F: PrimeField, S: Serializer>(
+    scalar: &F,
+    s: S,
+) -> Result<S::Ok, S::Error> {
     let v = scalar.to_repr();
     let vv = v.as_ref();
     if s.is_human_readable() {
@@ -524,7 +382,9 @@ fn serialize_scalar<F: PrimeField, S: Serializer>(scalar: &F, s: S) -> Result<S:
     }
 }
 
-fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<F, D::Error> {
+pub(crate) fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(
+    d: D,
+) -> Result<F, D::Error> {
     struct ScalarVisitor<F: PrimeField> {
         marker: PhantomData<F>,
     }
@@ -532,7 +392,7 @@ fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<
     impl<'de, F: PrimeField> Visitor<'de> for ScalarVisitor<F> {
         type Value = F;
 
-        fn expecting(&self, f: &mut Formatter) -> std::fmt::Result {
+        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
             write!(f, "a byte sequence")
         }
 
@@ -585,7 +445,7 @@ fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(d: D) -> Result<
     }
 }
 
-fn serialize_g<G: Group + GroupEncoding + Default, S: Serializer>(
+pub(crate) fn serialize_g<G: Group + GroupEncoding + Default, S: Serializer>(
     g: &G,
     s: S,
 ) -> Result<S::Ok, S::Error> {
@@ -602,7 +462,7 @@ fn serialize_g<G: Group + GroupEncoding + Default, S: Serializer>(
     }
 }
 
-fn deserialize_g<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
+pub(crate) fn deserialize_g<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
     d: D,
 ) -> Result<G, D::Error> {
     struct GVisitor<G: Group + GroupEncoding + Default> {
@@ -612,7 +472,7 @@ fn deserialize_g<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
     impl<'de, G: Group + GroupEncoding + Default> Visitor<'de> for GVisitor<G> {
         type Value = G;
 
-        fn expecting(&self, f: &mut Formatter) -> std::fmt::Result {
+        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
             write!(f, "a base64 encoded string or tuple of bytes")
         }
 
@@ -663,7 +523,7 @@ fn deserialize_g<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
     }
 }
 
-fn serialize_g_vec<G: Group + GroupEncoding + Default, S: Serializer>(
+pub(crate) fn serialize_g_vec<G: Group + GroupEncoding + Default, S: Serializer>(
     g: &Vec<G>,
     s: S,
 ) -> Result<S::Ok, S::Error> {
@@ -691,7 +551,7 @@ fn serialize_g_vec<G: Group + GroupEncoding + Default, S: Serializer>(
     }
 }
 
-fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
+pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
     d: D,
 ) -> Result<Vec<G>, D::Error> {
     struct NonReadableVisitor<G: Group + GroupEncoding + Default> {
@@ -701,7 +561,7 @@ fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Deserializer<'d
     impl<'de, G: Group + GroupEncoding + Default> Visitor<'de> for NonReadableVisitor<G> {
         type Value = Vec<G>;
 
-        fn expecting(&self, f: &mut Formatter) -> std::fmt::Result {
+        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
             write!(f, "an array of bytes")
         }
 
@@ -812,10 +672,14 @@ mod tests {
         let limit = NonZeroUsize::new(LIMIT).unwrap();
         let parameters = Parameters::<G>::new(threshold, limit);
         let mut participants = [
-            Participant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
-            Participant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
-            Participant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
-            Participant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
+            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(1).unwrap(), parameters)
+                .unwrap(),
+            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(2).unwrap(), parameters)
+                .unwrap(),
+            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(3).unwrap(), parameters)
+                .unwrap(),
+            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(4).unwrap(), parameters)
+                .unwrap(),
         ];
 
         let mut r1bdata = Vec::with_capacity(LIMIT);
@@ -879,7 +743,7 @@ mod tests {
             let res = p.round4(&r3bdata);
             assert!(res.is_ok());
             let bdata = res.unwrap();
-            let share = p.get_secret_share();
+            let share = p.get_secret_share().unwrap();
             r4bdata.insert(p.get_id(), bdata);
             let mut pshare = share.to_repr().as_ref().to_vec();
             pshare.insert(0, p.get_id() as u8);

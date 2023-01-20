@@ -9,6 +9,11 @@
 
 The Gennaro Distributed Key Generation Algorithm as described [here](https://link.springer.com/content/pdf/10.1007/s00145-006-0347-3.pdf)
 
+## Protocol details
+
+TODO: Document error handling and when it aborts and continues.
+Malformed messages vs Non-responsive
+
 This crate does not handle creating a secure channel to send data. This is left to consumers.
 
 A good description of methods to do this can be found [here](https://medium.com/zengo/mpc-over-signal-977db599de66).

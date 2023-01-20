@@ -1,10 +1,13 @@
 use super::*;
 use std::marker::PhantomData;
 
-impl<G: Group + GroupEncoding + Default> Participant<G> {
+impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
     /// Computes round2 for this participant.
     ///
     /// Inputs correspond to messages received from other participants
+    ///
+    /// The protocol will continue if some parties are malicious as
+    /// long as `threshold` or more participants are honest.
     ///
     /// Example: this participant is id = 1, others include 2, 3, 4
     /// broadcast_data = {
@@ -28,37 +31,28 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         p2p_data: BTreeMap<usize, Round1P2PData>,
     ) -> DkgResult<Round2EchoBroadcastData> {
         if !matches!(self.round, Round::Two) {
-            return Err(Error::RoundError(2, "Invalid Round".to_string()));
+            return Err(Error::RoundError(
+                Round::Two.into(),
+                format!("Invalid Round, use round{}", self.round),
+            ));
         }
 
         if broadcast_data.is_empty() {
             return Err(Error::RoundError(
-                2,
+                Round::Two.into(),
                 "Missing broadcast data from other participants".to_string(),
             ));
         }
         if p2p_data.is_empty() {
             return Err(Error::RoundError(
-                2,
+                Round::Two.into(),
                 "Missing peer-to-peer data from other participants".to_string(),
-            ));
-        }
-        if broadcast_data.len() != p2p_data.len() {
-            return Err(Error::RoundError(
-                2,
-                "Mismatching broadcast data and peer-to-peer data".to_string(),
-            ));
-        }
-        if broadcast_data.len() > self.limit {
-            return Err(Error::RoundError(
-                2,
-                "Too much participant data".to_string(),
             ));
         }
         if broadcast_data.len() < self.threshold {
             return Err(Error::RoundError(
-                2,
-                "Not enough participant data".to_string(),
+                Round::Two.into(),
+                "Not enough secret_participant data".to_string(),
             ));
         }
 
@@ -67,28 +61,48 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
         let og = self.secret_share;
 
-        for ((bid, bdata), (pid, p2p)) in broadcast_data.iter().zip(p2p_data.iter()) {
-            if bid != pid {
-                return Err(Error::RoundError(
-                    2,
-                    format!("Missing data from participant {}", *bid),
-                ));
+        // Create a unique list of secret_participant ids
+        let pids = broadcast_data
+            .keys()
+            .copied()
+            .chain(p2p_data.keys().copied())
+            .collect::<BTreeSet<usize>>();
+        for pid in &pids {
+            // resolve bid != pid where bid might exist or pid might exist in the other
+            // probably didn't receive the data, not necessarily malicious
+            let opt_bdata = broadcast_data.get(pid);
+            if opt_bdata.is_none() {
+                self.log(ParticipantError::MissingBroadcastData(*pid));
+                continue;
             }
+            let opt_p2p_data = p2p_data.get(pid);
+            if opt_p2p_data.is_none() {
+                self.log(ParticipantError::MissingBroadcastData(*pid));
+                continue;
+            }
+
+            let bdata = opt_bdata.unwrap();
 
             // If not using the same generator then its a problem
             if bdata.blinder_generator != self.components.verifier.generator
                 || bdata.message_generator != self.components.verifier.feldman_verifier.generator
                 || bdata.pedersen_commitments.len() != self.threshold
             {
+                self.log(ParticipantError::MismatchedParameters(*pid));
                 continue;
             }
+
             if bdata
                 .pedersen_commitments
                 .iter()
                 .any(|c| c.is_identity().unwrap_u8() == 1u8)
-                || p2p.secret_share.is_zero()
-                || p2p.blind_share.is_zero()
             {
+                self.log(ParticipantError::IdentityElementPedersenCommitments(*pid));
+                continue;
+            }
+            let p2p = opt_p2p_data.unwrap();
+            if p2p.secret_share.is_zero() || p2p.blind_share.is_zero() {
+                self.log(ParticipantError::ZeroValueShares(*pid));
                 continue;
             }
 
@@ -103,25 +117,27 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
             };
 
             if !verifier.verify(&p2p.secret_share, &p2p.blind_share) {
+                self.log(ParticipantError::NoVerifyShares(*pid));
                 continue;
             }
-
             if let Ok(s) = p2p.secret_share.as_field_element::<G::Scalar>() {
                 self.secret_share += s;
-                self.valid_participant_ids.insert(*bid);
+                self.valid_participant_ids.insert(*pid);
+            } else {
+                self.log(ParticipantError::BadFormatShare(*pid));
             }
         }
 
         if self.secret_share.is_zero().unwrap_u8() == 1u8 || self.secret_share == og {
             return Err(Error::RoundError(
-                2,
+                Round::Two.into(),
                 "The resulting secret key share is invalid".to_string(),
             ));
         }
         self.valid_participant_ids.insert(self.id);
         if self.valid_participant_ids.len() < self.threshold {
             return Err(Error::RoundError(
-                2,
+                Round::Two.into(),
                 "Not enough valid participants, below the threshold".to_string(),
             ));
         }

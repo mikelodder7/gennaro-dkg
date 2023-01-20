@@ -1,6 +1,6 @@
 use super::*;
 
-impl<G: Group + GroupEncoding + Default> Participant<G> {
+impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
     /// Compute round1 for this participant.
     ///
     /// Throws an error if this participant is not in round 1.
@@ -8,7 +8,10 @@ impl<G: Group + GroupEncoding + Default> Participant<G> {
         &mut self,
     ) -> DkgResult<(Round1BroadcastData<G>, BTreeMap<usize, Round1P2PData>)> {
         if !matches!(self.round, Round::One) {
-            return Err(Error::RoundError(1, "Invalid Round".to_string()));
+            return Err(Error::RoundError(
+                Round::One.into(),
+                format!("Invalid Round, use round{}", self.round),
+            ));
         }
         let mut map = BTreeMap::new();
         for (s, b) in self
