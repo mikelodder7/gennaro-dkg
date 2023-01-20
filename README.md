@@ -11,10 +11,16 @@ The Gennaro Distributed Key Generation Algorithm as described [here](https://lin
 
 ## Protocol details
 
-TODO: Document error handling and when it aborts and continues.
-Malformed messages vs Non-responsive
+The protocol provided in this crate provides the following
 
-This crate does not handle creating a secure channel to send data. This is left to consumers.
+- It will continue as long as there are enough participants a.k.a above the threshold
+- Abort if the number of participants drops below the threshold
+- Logs via a `log` crate which participants are the bad ones
+
+Malformed messages are not allowed and result in bad participants.
+Non-responsive participants are out of scope for this crate since this includes timeouts and retries
+which could be for a number of reasons: network latency, system crashes, etc. This is left to consumers
+as is handling the creation a secure channel to send data.
 
 A good description of methods to do this can be found [here](https://medium.com/zengo/mpc-over-signal-977db599de66).
 
