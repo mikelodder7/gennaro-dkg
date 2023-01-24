@@ -275,7 +275,7 @@ impl_round_to_int!(u64);
 impl_round_to_int!(usize);
 
 /// Broadcast data from round 1 that should be sent to all other participants
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     message_generator: G,
@@ -289,13 +289,13 @@ pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
 }
 
 /// Echo broadcast data from round 2 that should be sent to all valid participants
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round2EchoBroadcastData {
     valid_participant_ids: BTreeSet<usize>,
 }
 
 /// Broadcast data from round 3 that should be sent to all valid participants
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     message_generator: G,
@@ -307,7 +307,7 @@ pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
 }
 
 /// Echo broadcast data from round 4 that should be sent to all valid participants
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Debug, Clone, Serialize, Deserialize)]
 pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
     /// The computed public key
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
@@ -315,7 +315,7 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
 }
 
 /// Peer data from round 1 that should only be sent to a specific secret_participant
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round1P2PData {
     #[serde(
         serialize_with = "serialize_share",

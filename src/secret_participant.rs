@@ -6,8 +6,11 @@ mod round5;
 
 use super::*;
 
+/// Secret Participant with the Default Logger
+pub type DefaultSecretParticipant<G> = SecretParticipant<G, DefaultLogger>;
+
 /// A DKG secret participant. Maintains state information for each round
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SecretParticipant<G: Group + GroupEncoding + Default, L: Log> {
     id: usize,
     #[serde(bound(serialize = "PedersenResult<G::Scalar, G>: Serialize"))]

@@ -3,7 +3,7 @@ use super::*;
 /// The parameters used by the DKG participants.
 /// This must be the same for all of them otherwise the protocol
 /// will abort.
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Parameters<G: Group + GroupEncoding + Default> {
     pub(crate) threshold: usize,
     pub(crate) limit: usize,

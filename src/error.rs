@@ -7,6 +7,9 @@ pub enum Error {
     /// Format errors
     #[error("fmt error")]
     FmtError(#[from] std::fmt::Error),
+    /// Io errors
+    #[error("io error")]
+    IoError(#[from] std::io::Error),
     /// Verifiable secret sharing scheme errors
     #[error("vsss error")]
     VsssError(#[from] vsss_rs::Error),
