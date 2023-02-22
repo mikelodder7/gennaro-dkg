@@ -10,7 +10,7 @@ use super::*;
 pub type DefaultRefreshParticipant<G> = RefreshParticipant<G, DefaultLogger>;
 
 /// A DKG refresh participant. Maintains state information for each round
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RefreshParticipant<G: Group + GroupEncoding + Default, L: Log> {
     id: usize,
     #[serde(bound(serialize = "PedersenResult<G::Scalar, G>: Serialize"))]
