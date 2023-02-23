@@ -61,21 +61,3 @@ pub enum ParticipantError {
     #[error("secret_participant {0} has identity element feldman commitments")]
     IdentityElementFeldmanCommitments(usize),
 }
-
-// impl ParticipantError {
-//     pub(crate) fn get_participant_id(&self) -> usize {
-//         match self {
-//             Self::MissingP2PData(id) => *id,
-//             Self::MissingBroadcastData(id) => *id,
-//             Self::MismatchedParameters(id) => *id,
-//             Self::IdentityElementPedersenCommitments(id) => *id,
-//             Self::ZeroValueShares(id) => *id,
-//             Self::NoVerifyShares(id) => *id,
-//             Self::BadFormatShare(id) => *id,
-//             Self::UnexpectedBroadcast(id) => *id,
-//             Self::MissingP2PDataRound1(id) => *id,
-//             Self::MissingBroadcastDataRound1(id) => *id,
-//             Self::IdentityElementFeldmanCommitments(id) => *id,
-//         }
-//     }
-// }
