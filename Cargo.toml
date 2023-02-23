@@ -5,6 +5,7 @@ description = "The Gennaro Distributed Key Generation Algorithm"
 documentation = "https://docs.rs/gennaro-dkg"
 edition = "2021"
 homepage = "https://github.com/mikelodder7/gennaro-dkg"
+keywords = ["key generation", "distributed", "gennaro"]
 license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
