@@ -3,7 +3,7 @@ use log::Metadata;
 use serde::{Deserialize, Serialize};
 
 /// Does nothing, provided for convenience
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Serialize)]
 pub struct DefaultLogger {}
 
 impl Log for DefaultLogger {
