@@ -10,6 +10,7 @@ use super::*;
 pub type DefaultRefreshParticipant<G> = RefreshParticipant<G, DefaultLogger>;
 
 /// A DKG refresh participant. Maintains state information for each round
+/// Follows principles from <https://eprint.iacr.org/2020/1052>
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RefreshParticipant<G: Group + GroupEncoding + Default, L: Log> {
     id: usize,
@@ -27,6 +28,8 @@ pub struct RefreshParticipant<G: Group + GroupEncoding + Default, L: Log> {
     secret_share: G::Scalar,
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     public_key: G,
+    #[serde(bound(serialize = "Round1BroadcastData<G>: Serialize"))]
+    #[serde(bound(deserialize = "Round1BroadcastData<G>: Deserialize<'de>"))]
     round1_broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
     round1_p2p_data: BTreeMap<usize, Round1P2PData>,
     valid_participant_ids: BTreeSet<usize>,
@@ -158,9 +161,9 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
 
     pub(crate) fn log(&self, error: ParticipantError) {
         let e = error.to_string();
-        self.logger.as_ref().map(|l| {
+        if let Some(l) = self.logger.as_ref() {
             let record = Record::builder().level(Level::Warn).target(&e).build();
             l.log(&record)
-        });
+        }
     }
 }

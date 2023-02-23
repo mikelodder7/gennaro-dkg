@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## v0.2.5 - 2023-02-24
 
 - derive Default for Logger
+- Fixed participant serialization
 
 ## v0.2.4 - 2023-02-24
 

@@ -28,6 +28,8 @@ pub struct SecretParticipant<G: Group + GroupEncoding + Default, L: Log> {
     secret_share: G::Scalar,
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     public_key: G,
+    #[serde(bound(serialize = "Round1BroadcastData<G>: Serialize"))]
+    #[serde(bound(deserialize = "Round1BroadcastData<G>: Deserialize<'de>"))]
     round1_broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
     round1_p2p_data: BTreeMap<usize, Round1P2PData>,
     valid_participant_ids: BTreeSet<usize>,
@@ -156,9 +158,142 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
 
     pub(crate) fn log(&self, error: ParticipantError) {
         let e = error.to_string();
-        self.logger.as_ref().map(|l| {
+        if let Some(l) = self.logger.as_ref() {
             let record = Record::builder().level(Level::Warn).target(&e).build();
             l.log(&record)
-        });
+        }
     }
+}
+
+#[test]
+fn test_serialization() {
+    serialization::<k256::ProjectivePoint>();
+    serialization::<p256::ProjectivePoint>();
+    serialization::<vsss_rs::curve25519::WrappedEdwards>();
+    serialization::<vsss_rs::curve25519::WrappedRistretto>();
+    serialization::<bls12_381_plus::G1Projective>();
+    serialization::<bls12_381_plus::G2Projective>();
+}
+
+#[cfg(test)]
+fn serialization<G: Group + GroupEncoding + Default>() {
+    let participant = unsafe {
+        DefaultSecretParticipant::new(
+            NonZeroUsize::new_unchecked(1),
+            Parameters::<G>::new(
+                NonZeroUsize::new_unchecked(2),
+                NonZeroUsize::new_unchecked(3),
+            ),
+        )
+        .unwrap()
+    };
+    let st = serde_json::to_string(&participant).unwrap();
+    let res = serde_json::from_str::<DefaultSecretParticipant<G>>(&st);
+    assert!(res.is_ok());
+    let participant2 = res.unwrap();
+    compare_participants(&participant, &participant2);
+    let bin = serde_bare::to_vec(&participant).unwrap();
+    let res = serde_bare::from_slice::<DefaultSecretParticipant<G>>(&bin);
+    assert!(res.is_ok());
+    let participant2 = res.unwrap();
+    compare_participants(&participant, &participant2);
+}
+
+#[cfg(test)]
+fn compare_participants<G: Group + GroupEncoding + Default>(
+    participant: &DefaultSecretParticipant<G>,
+    participant2: &DefaultSecretParticipant<G>,
+) {
+    assert_eq!(participant2.id, participant.id);
+    assert_eq!(participant2.limit, participant.limit);
+    assert_eq!(participant2.threshold, participant.threshold);
+    assert_eq!(participant2.public_key, participant.public_key);
+    assert_eq!(participant2.round, participant.round);
+    assert_eq!(participant2.secret_share, participant.secret_share);
+    assert_eq!(
+        participant2.components.blinding,
+        participant.components.blinding
+    );
+    assert_eq!(
+        participant2.components.blind_shares.len(),
+        participant.components.blind_shares.len()
+    );
+    assert_eq!(
+        participant2.components.blind_shares[0],
+        participant.components.blind_shares[0]
+    );
+    assert_eq!(
+        participant2.components.blind_shares[1],
+        participant.components.blind_shares[1]
+    );
+    assert_eq!(
+        participant2.components.blind_shares[2],
+        participant.components.blind_shares[2]
+    );
+    assert_eq!(
+        participant2.components.secret_shares.len(),
+        participant.components.secret_shares.len()
+    );
+    assert_eq!(
+        participant2.components.secret_shares[0],
+        participant.components.secret_shares[0]
+    );
+    assert_eq!(
+        participant2.components.secret_shares[1],
+        participant.components.secret_shares[1]
+    );
+    assert_eq!(
+        participant2.components.secret_shares[2],
+        participant.components.secret_shares[2]
+    );
+    assert_eq!(
+        participant2.components.verifier.generator,
+        participant.components.verifier.generator
+    );
+    assert_eq!(
+        participant2.components.verifier.commitments.len(),
+        participant.components.verifier.commitments.len()
+    );
+    assert_eq!(
+        participant2.components.verifier.commitments[0],
+        participant.components.verifier.commitments[0]
+    );
+    assert_eq!(
+        participant2.components.verifier.commitments[1],
+        participant.components.verifier.commitments[1]
+    );
+    assert_eq!(
+        participant2.components.verifier.feldman_verifier.generator,
+        participant.components.verifier.feldman_verifier.generator
+    );
+    assert_eq!(
+        participant2
+            .components
+            .verifier
+            .feldman_verifier
+            .commitments
+            .len(),
+        participant
+            .components
+            .verifier
+            .feldman_verifier
+            .commitments
+            .len()
+    );
+    assert_eq!(
+        participant2
+            .components
+            .verifier
+            .feldman_verifier
+            .commitments[0],
+        participant.components.verifier.feldman_verifier.commitments[0]
+    );
+    assert_eq!(
+        participant2
+            .components
+            .verifier
+            .feldman_verifier
+            .commitments[1],
+        participant.components.verifier.feldman_verifier.commitments[1]
+    );
 }

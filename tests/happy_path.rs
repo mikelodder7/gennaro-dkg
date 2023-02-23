@@ -54,6 +54,16 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
         assert!(p.round1().is_err());
     }
 
+    // serialize test
+
+    let res_participant_json = serde_json::to_string(&participants[0]);
+    assert!(res_participant_json.is_ok());
+    let participant_json = res_participant_json.unwrap();
+    let res_p0 = serde_json::from_str::<SecretParticipant<G, DefaultLogger>>(&participant_json);
+    assert!(res_p0.is_ok());
+    let p0 = res_p0.unwrap();
+    assert_eq!(p0.get_id(), participants[0].get_id());
+
     let mut r2bdata = BTreeMap::new();
 
     for i in 0..LIMIT {
