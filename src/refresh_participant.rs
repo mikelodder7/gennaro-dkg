@@ -86,7 +86,6 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
             .verifier
             .commitments
             .iter()
-            .skip(1)
             .any(|c| c.is_identity().unwrap_u8() == 1u8)
             || components
                 .verifier
@@ -95,11 +94,6 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
                 .iter()
                 .skip(1)
                 .any(|c| c.is_identity().unwrap_u8() == 1u8)
-            || components.verifier.commitments[0].is_identity().unwrap_u8() == 0u8
-            || components.verifier.feldman_verifier.commitments[0]
-                .is_identity()
-                .unwrap_u8()
-                == 0u8
         {
             return Err(Error::InitializationError(
                 "Invalid commitments".to_string(),

@@ -5,7 +5,11 @@ All notable changes to this crate will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.2.6 - 2023-02-27
+## v0.2.8 - 2023-02-27
+
+- Update to vsss 2.7 which allows splitting zero secrets
+
+## v0.2.7 - 2023-02-27
 
 - Update dependencies
 
