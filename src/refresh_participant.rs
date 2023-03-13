@@ -62,12 +62,10 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
         secret: G::Scalar,
         blinder: G::Scalar,
     ) -> DkgResult<Self> {
-        let pedersen = Pedersen {
-            t: parameters.threshold,
-            n: parameters.limit,
-        };
         let mut rng = rand_core::OsRng;
-        let components = pedersen.split_secret(
+        let components = pedersen::split_secret(
+            parameters.threshold,
+            parameters.limit,
             secret,
             Some(blinder),
             Some(parameters.message_generator),

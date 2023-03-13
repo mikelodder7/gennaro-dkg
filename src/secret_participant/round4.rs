@@ -86,7 +86,10 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
                 self.valid_participant_ids.remove(id);
                 continue;
             }
-            if !verifier.verify(&self.round1_p2p_data[id].secret_share) {
+            if verifier
+                .verify(&self.round1_p2p_data[id].secret_share)
+                .is_err()
+            {
                 self.log(ParticipantError::NoVerifyShares(*id));
                 self.valid_participant_ids.remove(id);
                 continue;

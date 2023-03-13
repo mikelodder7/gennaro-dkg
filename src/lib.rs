@@ -22,7 +22,6 @@
 //! An example for generating a secret key on the Secp256k1 curve with 2 out of 3 participants.
 //!
 //! ```
-//! use elliptic_curve::{Group, PrimeField};
 //! use gennaro_dkg::*;
 //! use k256::{ProjectivePoint, Scalar};
 //! use maplit::btreemap;
@@ -30,7 +29,7 @@
 //!     collections::BTreeMap,
 //!     num::NonZeroUsize,
 //! };
-//! use vsss_rs::{Shamir, Share};
+//! use vsss_rs::{Share, combine_shares, elliptic_curve::{Group, PrimeField}};
 //!
 //! let parameters = Parameters::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(3).unwrap());
 //!
@@ -177,7 +176,7 @@
 //! s2.insert(0, 2u8);
 //! s3.insert(0, 3u8);
 //!
-//! let sk = Shamir { t: 2, n: 3 }.combine_shares::<Scalar>(&[Share(s1), Share(s2), Share(s3)]).unwrap();
+//! let sk = combine_shares::<Scalar>(&[Share(s1), Share(s2), Share(s3)]).unwrap();
 //! let computed_pk = ProjectivePoint::GENERATOR * sk;
 //! assert_eq!(computed_pk, pk1);
 //! ```
@@ -197,7 +196,6 @@
 )]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-pub use elliptic_curve;
 pub use rand_core;
 pub use vsss_rs;
 
@@ -207,7 +205,6 @@ mod parameters;
 mod refresh_participant;
 mod secret_participant;
 
-use elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField};
 use log::{Level, Log, Record};
 use rand_core::SeedableRng;
 use serde::{
@@ -222,7 +219,10 @@ use std::{
     num::NonZeroUsize,
 };
 use uint_zigzag::Uint;
-use vsss_rs::{FeldmanVerifier, Pedersen, PedersenResult, PedersenVerifier, Share};
+use vsss_rs::{
+    elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField},
+    pedersen, FeldmanVerifier, PedersenResult, PedersenVerifier, Share,
+};
 
 pub use error::*;
 pub use logger::*;
@@ -639,7 +639,7 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vsss_rs::{Shamir, Share};
+    use vsss_rs::{combine_shares, Share};
 
     #[test]
     fn one_corrupted_party_k256() {
@@ -758,11 +758,7 @@ mod tests {
             assert!(p.round5(&r4bdata).is_ok());
         }
 
-        let res = Shamir {
-            t: THRESHOLD,
-            n: LIMIT,
-        }
-        .combine_shares::<G::Scalar>(&r4shares);
+        let res = combine_shares::<G::Scalar>(&r4shares);
         assert!(res.is_ok());
         let secret = res.unwrap();
 

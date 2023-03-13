@@ -1,5 +1,4 @@
 use super::*;
-use elliptic_curve::group::{Group, GroupEncoding};
 
 impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
     /// Computes round 3 for this participant.

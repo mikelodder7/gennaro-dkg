@@ -116,7 +116,10 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
                 },
             };
 
-            if !verifier.verify(&p2p.secret_share, &p2p.blind_share) {
+            if verifier
+                .verify(&p2p.secret_share, &p2p.blind_share)
+                .is_err()
+            {
                 self.log(ParticipantError::NoVerifyShares(*pid));
                 continue;
             }
