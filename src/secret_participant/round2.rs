@@ -95,13 +95,13 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
             if bdata
                 .pedersen_commitments
                 .iter()
-                .any(|c| c.is_identity().unwrap_u8() == 1u8)
+                .any(|c| c.is_identity().into())
             {
                 self.log(ParticipantError::IdentityElementPedersenCommitments(*pid));
                 continue;
             }
             let p2p = opt_p2p_data.unwrap();
-            if p2p.secret_share.is_zero() || p2p.blind_share.is_zero() {
+            if (p2p.secret_share.is_zero() | p2p.blind_share.is_zero()).into() {
                 self.log(ParticipantError::ZeroValueShares(*pid));
                 continue;
             }

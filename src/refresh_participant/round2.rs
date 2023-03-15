@@ -103,7 +103,7 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
                 continue;
             }
             let p2p = opt_p2p_data.unwrap();
-            if p2p.secret_share.is_zero() || p2p.blind_share.is_zero() {
+            if (p2p.secret_share.is_zero() | p2p.blind_share.is_zero()).into() {
                 self.log(ParticipantError::ZeroValueShares(*pid));
                 continue;
             }

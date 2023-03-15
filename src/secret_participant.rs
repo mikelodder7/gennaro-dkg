@@ -96,8 +96,8 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
                 "Invalid commitments".to_string(),
             ));
         }
-        if components.secret_shares.iter().any(|s| s.is_zero())
-            || components.blind_shares.iter().any(|s| s.is_zero())
+        if components.secret_shares.iter().any(|s| s.is_zero().into())
+            || components.blind_shares.iter().any(|s| s.is_zero().into())
         {
             return Err(Error::InitializationError("Invalid shares".to_string()));
         }
