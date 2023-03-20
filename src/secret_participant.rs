@@ -110,7 +110,7 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
             round: Round::One,
             round1_broadcast_data: BTreeMap::new(),
             round1_p2p_data: BTreeMap::new(),
-            secret_share: G::Scalar::zero(),
+            secret_share: G::Scalar::ZERO,
             public_key: G::identity(),
             valid_participant_ids: BTreeSet::new(),
         })

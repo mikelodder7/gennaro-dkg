@@ -53,7 +53,7 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
     /// [`SecretParticipant`]::with_secret should be used
     pub fn new(id: NonZeroUsize, parameters: Parameters<G>) -> DkgResult<Self> {
         let blinder = G::Scalar::random(rand_core::OsRng);
-        Self::initialize(id, parameters, G::Scalar::zero(), blinder)
+        Self::initialize(id, parameters, G::Scalar::ZERO, blinder)
     }
 
     fn initialize(
@@ -111,7 +111,7 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
             round: Round::One,
             round1_broadcast_data: BTreeMap::new(),
             round1_p2p_data: BTreeMap::new(),
-            secret_share: G::Scalar::zero(),
+            secret_share: G::Scalar::ZERO,
             public_key: G::identity(),
             valid_participant_ids: BTreeSet::new(),
         })
