@@ -33,9 +33,9 @@
 //!
 //! let parameters = Parameters::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(3).unwrap());
 //!
-//! let mut participant1 = SecretParticipant::<ProjectivePoint, DefaultLogger>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap();
-//! let mut participant2 = SecretParticipant::<ProjectivePoint, DefaultLogger>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap();
-//! let mut participant3 = SecretParticipant::<ProjectivePoint, DefaultLogger>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap();
+//! let mut participant1 = SecretParticipant::<ProjectivePoint>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap();
+//! let mut participant2 = SecretParticipant::<ProjectivePoint>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap();
+//! let mut participant3 = SecretParticipant::<ProjectivePoint>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap();
 //!
 //! // Round 1
 //! let (b1data1, p2p1data) = participant1.round1().unwrap();
@@ -168,15 +168,11 @@
 //! // For demonstration purposes, the shares if collected can be combined to recreate
 //! // the computed secret
 //!
-//! let mut s1 = share1.to_repr().to_vec();
-//! let mut s2 = share2.to_repr().to_vec();
-//! let mut s3 = share3.to_repr().to_vec();
+//! let s1 = <Vec<u8> as Share>::from_field_element(1u8, share1).unwrap();
+//! let s2 = <Vec<u8> as Share>::from_field_element(2u8, share2).unwrap();
+//! let s3 = <Vec<u8> as Share>::from_field_element(3u8, share3).unwrap();
 //!
-//! s1.insert(0, 1u8);
-//! s2.insert(0, 2u8);
-//! s3.insert(0, 3u8);
-//!
-//! let sk = combine_shares::<Scalar>(&[Share(s1), Share(s2), Share(s3)]).unwrap();
+//! let sk: Scalar = combine_shares(&[s1, s2, s3]).unwrap();
 //! let computed_pk = ProjectivePoint::GENERATOR * sk;
 //! assert_eq!(computed_pk, pk1);
 //! ```
@@ -592,6 +588,7 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use vsss_rs::{combine_shares, Share};
 
     #[test]
@@ -625,13 +622,13 @@ mod tests {
         let limit = NonZeroUsize::new(LIMIT).unwrap();
         let parameters = Parameters::<G>::new(threshold, limit);
         let mut participants = [
-            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(1).unwrap(), parameters)
+            SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters)
                 .unwrap(),
-            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(2).unwrap(), parameters)
+            SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters)
                 .unwrap(),
-            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(3).unwrap(), parameters)
+            SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters)
                 .unwrap(),
-            SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(4).unwrap(), parameters)
+            SecretParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters)
                 .unwrap(),
         ];
 
@@ -698,9 +695,7 @@ mod tests {
             let bdata = res.unwrap();
             let share = p.get_secret_share().unwrap();
             r4bdata.insert(p.get_id(), bdata);
-            let mut pshare = share.to_repr().as_ref().to_vec();
-            pshare.insert(0, p.get_id() as u8);
-            r4shares.push(Share(pshare));
+            r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
             assert!(p.round4(&r3bdata).is_err());
         }
 
@@ -711,7 +706,7 @@ mod tests {
             assert!(p.round5(&r4bdata).is_ok());
         }
 
-        let res = combine_shares::<G::Scalar>(&r4shares);
+        let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
         assert!(res.is_ok());
         let secret = res.unwrap();
 

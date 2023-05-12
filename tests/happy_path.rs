@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use vsss_rs::{
     combine_shares,
     curve25519::*,
-    elliptic_curve::{group::GroupEncoding, Group, PrimeField},
+    elliptic_curve::{group::GroupEncoding, Group},
     Share,
 };
 
@@ -38,11 +38,11 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     let limit = NonZeroUsize::new(LIMIT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
     let mut participants = [
-        SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(1).unwrap(), parameters)
+        SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters)
             .unwrap(),
-        SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(2).unwrap(), parameters)
+        SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters)
             .unwrap(),
-        SecretParticipant::<G, DefaultLogger>::new(NonZeroUsize::new(3).unwrap(), parameters)
+        SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters)
             .unwrap(),
     ];
 
@@ -62,7 +62,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     let res_participant_json = serde_json::to_string(&participants[0]);
     assert!(res_participant_json.is_ok());
     let participant_json = res_participant_json.unwrap();
-    let res_p0 = serde_json::from_str::<SecretParticipant<G, DefaultLogger>>(&participant_json);
+    let res_p0 = serde_json::from_str::<SecretParticipant<G>>(&participant_json);
     assert!(res_p0.is_ok());
     let p0 = res_p0.unwrap();
     assert_eq!(p0.get_id(), participants[0].get_id());
@@ -105,9 +105,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        let mut pshare = share.to_repr().as_ref().to_vec();
-        pshare.insert(0, p.get_id() as u8);
-        r4shares.push(Share(pshare));
+        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -115,7 +113,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
         assert!(p.round5(&r4bdata).is_ok());
     }
 
-    let res = combine_shares::<G::Scalar>(&r4shares);
+    let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
     assert!(res.is_ok());
     let secret = res.unwrap();
 
