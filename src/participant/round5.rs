@@ -1,6 +1,6 @@
 use super::*;
 
-impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
+impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
     /// Computes round 5 for this participant.
     ///
     /// Checks if all participants computed the same public key.
@@ -36,7 +36,6 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
                 continue;
             }
             if !self.valid_participant_ids.contains(id) {
-                self.log(ParticipantError::UnexpectedBroadcast(*id));
                 continue;
             }
             if !self.round1_p2p_data.contains_key(id) {
@@ -44,7 +43,6 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
                 // Round 2 removed all invalid participants
                 // Round 3 sent echo broadcast to double check valid participants
                 // Round 4 also removed all invalid participants
-                self.log(ParticipantError::MissingP2PDataRound1(*id));
                 continue;
             }
             if !self.round1_broadcast_data.contains_key(id) {
@@ -52,7 +50,6 @@ impl<G: Group + GroupEncoding + Default, L: Log> RefreshParticipant<G, L> {
                 // Round 2 removed all invalid participants
                 // Round 3 sent echo broadcast to double check valid participants
                 // Round 4 also removed all invalid participants
-                self.log(ParticipantError::MissingBroadcastDataRound1(*id));
                 continue;
             }
             if bdata.public_key != self.public_key {

@@ -1,6 +1,6 @@
 use super::*;
 
-impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
+impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
     /// Computes round 3 for this participant.
     ///
     /// This round checks for valid participant ids to make
@@ -40,7 +40,6 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
                 continue;
             }
             if !self.valid_participant_ids.contains(id) {
-                self.log(ParticipantError::UnexpectedBroadcast(*id));
                 continue;
             }
             if self
@@ -60,13 +59,7 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
         }
 
         let round3_bdata = Round3BroadcastData {
-            message_generator: self.components.verifier.feldman_verifier.generator,
-            commitments: self
-                .components
-                .verifier
-                .feldman_verifier
-                .commitments
-                .clone(),
+            commitments: self.components.feldman_verifier_set.verifiers().to_vec(),
         };
         self.round = Round::Four;
 

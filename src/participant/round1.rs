@@ -1,6 +1,6 @@
 use super::*;
 
-impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
+impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
     /// Compute round1 for this participant.
     ///
     /// Throws an error if this participant is not in round 1.
@@ -18,7 +18,7 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
             .components
             .secret_shares
             .iter()
-            .zip(self.components.blind_shares.iter())
+            .zip(self.components.blinder_shares.iter())
         {
             let id = s.identifier() as usize;
             if id == self.id {
@@ -36,9 +36,13 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
 
         self.round = Round::Two;
         let bdata = Round1BroadcastData {
-            blinder_generator: self.components.verifier.generator,
-            message_generator: self.components.verifier.feldman_verifier.generator,
-            pedersen_commitments: self.components.verifier.commitments.clone(),
+            blinder_generator: self.components.pedersen_verifier_set.blinder_generator(),
+            message_generator: self.components.pedersen_verifier_set.secret_generator(),
+            pedersen_commitments: self
+                .components
+                .pedersen_verifier_set
+                .blind_verifiers()
+                .to_vec(),
         };
 
         Ok((bdata, map))

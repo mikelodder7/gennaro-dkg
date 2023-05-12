@@ -200,12 +200,10 @@ pub use rand_core;
 pub use vsss_rs;
 
 mod error;
-mod logger;
 mod parameters;
-mod refresh_participant;
-mod secret_participant;
+mod participant;
+mod pedersen_result;
 
-use log::{Level, Log, Record};
 use rand_core::SeedableRng;
 use serde::{
     de::{Error as DError, SeqAccess, Unexpected, Visitor},
@@ -213,22 +211,18 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     fmt::{self, Display, Formatter},
     marker::PhantomData,
     num::NonZeroUsize,
 };
 use uint_zigzag::Uint;
-use vsss_rs::{
-    elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField},
-    pedersen, FeldmanVerifier, PedersenResult, PedersenVerifier, Share,
-};
+use vsss_rs::elliptic_curve::{group::GroupEncoding, Group, PrimeField};
 
 pub use error::*;
-pub use logger::*;
 pub use parameters::*;
-pub use refresh_participant::*;
-pub use secret_participant::*;
+pub use participant::*;
+pub use pedersen_result::*;
 
 /// Valid rounds
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -297,8 +291,6 @@ pub struct Round2EchoBroadcastData {
 /// Broadcast data from round 3 that should be sent to all valid participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    message_generator: G,
     #[serde(
         serialize_with = "serialize_g_vec",
         deserialize_with = "deserialize_g_vec"
@@ -317,51 +309,8 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
 /// Peer data from round 1 that should only be sent to a specific secret_participant
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round1P2PData {
-    #[serde(
-        serialize_with = "serialize_share",
-        deserialize_with = "deserialize_share"
-    )]
-    secret_share: Share,
-    #[serde(
-        serialize_with = "serialize_share",
-        deserialize_with = "deserialize_share"
-    )]
-    blind_share: Share,
-}
-
-pub(crate) fn serialize_share<S: Serializer>(share: &Share, s: S) -> Result<S::Ok, S::Error> {
-    if s.is_human_readable() {
-        s.serialize_str(&base64_url::encode(share.as_ref()))
-    } else {
-        share.serialize(s)
-    }
-}
-
-pub(crate) fn deserialize_share<'de, D: Deserializer<'de>>(d: D) -> Result<Share, D::Error> {
-    struct ShareVisitor;
-
-    impl<'de> Visitor<'de> for ShareVisitor {
-        type Value = Share;
-
-        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-            write!(f, "a base64 encoded string")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: DError,
-        {
-            let bytes = base64_url::decode(v)
-                .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
-            Ok(Share(bytes))
-        }
-    }
-
-    if d.is_human_readable() {
-        d.deserialize_str(ShareVisitor)
-    } else {
-        Share::deserialize(d)
-    }
+    secret_share: Vec<u8>,
+    blind_share: Vec<u8>,
 }
 
 pub(crate) fn serialize_scalar<F: PrimeField, S: Serializer>(
@@ -371,7 +320,7 @@ pub(crate) fn serialize_scalar<F: PrimeField, S: Serializer>(
     let v = scalar.to_repr();
     let vv = v.as_ref();
     if s.is_human_readable() {
-        s.serialize_str(&base64_url::encode(vv))
+        s.serialize_str(&data_encoding::BASE64URL_NOPAD.encode(vv))
     } else {
         let len = vv.len();
         let mut t = s.serialize_tuple(len)?;
@@ -400,12 +349,13 @@ pub(crate) fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(
         where
             E: DError,
         {
-            let bytes = base64_url::decode(v)
+            let bytes = data_encoding::BASE64URL_NOPAD
+                .decode(v.as_bytes())
                 .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
             let mut repr = F::default().to_repr();
             repr.as_mut().copy_from_slice(bytes.as_slice());
             let sc = F::from_repr(repr);
-            if sc.is_some().unwrap_u8() == 1u8 {
+            if sc.is_some().into() {
                 Ok(sc.unwrap())
             } else {
                 Err(DError::custom("unable to convert to scalar".to_string()))
@@ -424,7 +374,7 @@ pub(crate) fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(
                 i += 1;
                 if i == len {
                     let sc = F::from_repr(repr);
-                    if sc.is_some().unwrap_u8() == 1u8 {
+                    if sc.is_some().into() {
                         return Ok(sc.unwrap());
                     }
                 }
@@ -452,7 +402,7 @@ pub(crate) fn serialize_g<G: Group + GroupEncoding + Default, S: Serializer>(
     let v = g.to_bytes();
     let vv = v.as_ref();
     if s.is_human_readable() {
-        s.serialize_str(&base64_url::encode(vv))
+        s.serialize_str(&data_encoding::BASE64URL_NOPAD.encode(vv))
     } else {
         let mut t = s.serialize_tuple(vv.len())?;
         for b in vv {
@@ -481,7 +431,8 @@ pub(crate) fn deserialize_g<'de, G: Group + GroupEncoding + Default, D: Deserial
             E: DError,
         {
             let mut repr = G::Repr::default();
-            let bytes = base64_url::decode(v)
+            let bytes = data_encoding::BASE64URL_NOPAD
+                .decode(v.as_bytes())
                 .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
             repr.as_mut().copy_from_slice(bytes.as_slice());
             let res = G::from_bytes(&repr);
@@ -531,7 +482,7 @@ pub(crate) fn serialize_g_vec<G: Group + GroupEncoding + Default, S: Serializer>
     if s.is_human_readable() {
         let vv = v
             .iter()
-            .map(|b| base64_url::encode(b.as_ref()))
+            .map(|b| data_encoding::BASE64URL_NOPAD.encode(b.as_ref()))
             .collect::<Vec<String>>();
         vv.serialize(s)
     } else {
@@ -576,6 +527,7 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
                 if i == Uint::MAX_BYTES {
                     break;
                 }
+                i += 1;
             }
             let bytes_cnt_size = Uint::peek(&buffer)
                 .ok_or_else(|| DError::invalid_value(Unexpected::Bytes(&buffer), &self))?;
@@ -617,7 +569,8 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
         let mut out = Vec::with_capacity(s.len());
         for si in &s {
             let mut repr = G::Repr::default();
-            let bytes = base64_url::decode(si)
+            let bytes = data_encoding::BASE64URL_NOPAD
+                .decode(si.as_bytes())
                 .map_err(|_| DError::custom("unable to decode string to bytes".to_string()))?;
             repr.as_mut().copy_from_slice(bytes.as_slice());
             let pt = G::from_bytes(&repr);

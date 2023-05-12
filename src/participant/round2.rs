@@ -1,7 +1,6 @@
 use super::*;
-use std::marker::PhantomData;
 
-impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
+impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
     /// Computes round2 for this participant.
     ///
     /// Inputs correspond to messages received from other participants
@@ -49,10 +48,26 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
                 "Missing peer-to-peer data from other participants".to_string(),
             ));
         }
-        if broadcast_data.len() < self.threshold {
+        // Allow -1 since including this participant
+        // This round doesn't expect this participant data included in the broadcast_data map
+        if broadcast_data.len() < self.threshold - 1 {
             return Err(Error::RoundError(
                 Round::Two.into(),
-                "Not enough secret_participant data".to_string(),
+                format!(
+                    "Not enough secret_participant data. Expected {}, received {}",
+                    self.threshold,
+                    broadcast_data.len()
+                ),
+            ));
+        }
+        if p2p_data.len() < self.threshold - 1 {
+            return Err(Error::RoundError(
+                Round::Two.into(),
+                format!(
+                    "Not enough secret_participant data. Expected {}, received {}",
+                    self.threshold,
+                    broadcast_data.len()
+                ),
             ));
         }
 
@@ -72,23 +87,21 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
             // probably didn't receive the data, not necessarily malicious
             let opt_bdata = broadcast_data.get(pid);
             if opt_bdata.is_none() {
-                self.log(ParticipantError::MissingBroadcastData(*pid));
                 continue;
             }
             let opt_p2p_data = p2p_data.get(pid);
             if opt_p2p_data.is_none() {
-                self.log(ParticipantError::MissingBroadcastData(*pid));
                 continue;
             }
 
             let bdata = opt_bdata.unwrap();
 
             // If not using the same generator then its a problem
-            if bdata.blinder_generator != self.components.verifier.generator
-                || bdata.message_generator != self.components.verifier.feldman_verifier.generator
+            if bdata.blinder_generator != self.components.pedersen_verifier_set.blinder_generator()
+                || bdata.message_generator
+                    != self.components.pedersen_verifier_set.secret_generator()
                 || bdata.pedersen_commitments.len() != self.threshold
             {
-                self.log(ParticipantError::MismatchedParameters(*pid));
                 continue;
             }
 
@@ -97,41 +110,32 @@ impl<G: Group + GroupEncoding + Default, L: Log> SecretParticipant<G, L> {
                 .iter()
                 .any(|c| c.is_identity().into())
             {
-                self.log(ParticipantError::IdentityElementPedersenCommitments(*pid));
                 continue;
             }
             let p2p = opt_p2p_data.unwrap();
             if (p2p.secret_share.is_zero() | p2p.blind_share.is_zero()).into() {
-                self.log(ParticipantError::ZeroValueShares(*pid));
                 continue;
             }
 
-            let verifier = PedersenVerifier {
-                generator: bdata.blinder_generator,
-                commitments: bdata.pedersen_commitments.clone(),
-                feldman_verifier: FeldmanVerifier {
-                    generator: bdata.message_generator,
-                    commitments: vec![],
-                    marker: PhantomData::<G::Scalar>,
-                },
-            };
+            let verifier = Vec::<G>::pedersen_set_with_generators_and_verifiers(
+                bdata.message_generator,
+                bdata.blinder_generator,
+                &bdata.pedersen_commitments,
+            );
 
             if verifier
-                .verify(&p2p.secret_share, &p2p.blind_share)
+                .verify_share_and_blinder(&p2p.secret_share, &p2p.blind_share)
                 .is_err()
             {
-                self.log(ParticipantError::NoVerifyShares(*pid));
                 continue;
             }
             if let Ok(s) = p2p.secret_share.as_field_element::<G::Scalar>() {
                 self.secret_share += s;
                 self.valid_participant_ids.insert(*pid);
-            } else {
-                self.log(ParticipantError::BadFormatShare(*pid));
             }
         }
 
-        if self.secret_share.is_zero().unwrap_u8() == 1u8 || self.secret_share == og {
+        if self.secret_share.is_zero().into() || self.secret_share == og {
             return Err(Error::RoundError(
                 Round::Two.into(),
                 "The resulting secret key share is invalid".to_string(),

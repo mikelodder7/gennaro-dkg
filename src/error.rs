@@ -12,13 +12,19 @@ pub enum Error {
     IoError(#[from] std::io::Error),
     /// Verifiable secret sharing scheme errors
     #[error("vsss error")]
-    VsssError(#[from] vsss_rs::Error),
+    VsssError(vsss_rs::Error),
     /// Errors during secret_participant initialization
     #[error("error during secret_participant creation: {0}")]
     InitializationError(String),
     /// Errors using rounds
     #[error("round {0} invalid input: `{1}`")]
     RoundError(usize, String),
+}
+
+impl From<vsss_rs::Error> for Error {
+    fn from(value: vsss_rs::Error) -> Self {
+        Self::VsssError(value)
+    }
 }
 
 /// Dkg results
