@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
 repository = "https://github.com/mikelodder7/gennaro-dkg"
-version = "0.2.9-rc0"
+version = "0.3.0-rc.0"
 
 [dependencies]
 anyhow = "1.0"
