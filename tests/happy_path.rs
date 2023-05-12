@@ -38,12 +38,9 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     let limit = NonZeroUsize::new(LIMIT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
     let mut participants = [
-        SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters)
-            .unwrap(),
-        SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters)
-            .unwrap(),
-        SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters)
-            .unwrap(),
+        SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
+        SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
+        SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
     ];
 
     let mut r1bdata = Vec::with_capacity(LIMIT);

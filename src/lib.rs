@@ -221,12 +221,17 @@ pub use participant::*;
 pub use pedersen_result::*;
 
 /// Valid rounds
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-pub(crate) enum Round {
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Round {
+    /// First round
     One,
+    /// Second round
     Two,
+    /// Third round
     Three,
+    /// Four round
     Four,
+    /// Five round
     Five,
 }
 
@@ -622,14 +627,10 @@ mod tests {
         let limit = NonZeroUsize::new(LIMIT).unwrap();
         let parameters = Parameters::<G>::new(threshold, limit);
         let mut participants = [
-            SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters)
-                .unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters)
-                .unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters)
-                .unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters)
-                .unwrap(),
+            SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
+            SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
+            SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
+            SecretParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
         ];
 
         let mut r1bdata = Vec::with_capacity(LIMIT);

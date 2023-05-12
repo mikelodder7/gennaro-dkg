@@ -165,6 +165,21 @@ where
         self.round == Round::Five
     }
 
+    /// Return the current round
+    pub fn get_round(&self) -> Round {
+        self.round
+    }
+
+    /// Return the set threshold
+    pub fn get_threshold(&self) -> usize {
+        self.threshold
+    }
+
+    /// Return the set limit
+    pub fn get_limit(&self) -> usize {
+        self.limit
+    }
+
     /// Computed secret share.
     /// This value is useless until all rounds have been run
     /// so [`None`] is returned until completion
@@ -185,6 +200,11 @@ where
         } else {
             None
         }
+    }
+
+    /// Return the list of valid participant ids
+    pub fn get_valid_participant_ids(&self) -> &BTreeSet<usize> {
+        &self.valid_participant_ids
     }
 }
 
