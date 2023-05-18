@@ -15,7 +15,6 @@ The protocol provided in this crate provides the following
 
 - It will continue as long as there are enough participants a.k.a above the threshold
 - Abort if the number of participants drops below the threshold
-- Logs via a `log` crate which participants are the bad ones
 
 Malformed messages are not allowed and result in bad participants.
 Non-responsive participants are out of scope for this crate since this includes timeouts and retries
