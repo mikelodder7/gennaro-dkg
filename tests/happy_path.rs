@@ -121,6 +121,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     assert!(res.is_ok());
     let secret = res.unwrap();
     println!("Old Secret- {:?}", secret);
+    println!("Old Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
 
     assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
@@ -130,10 +131,20 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
     let limit = NonZeroUsize::new(LIMIT + 1).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
+
+    let share_ids = [
+        G::Scalar::from(1),
+        G::Scalar::from(2),
+        G::Scalar::from(3),
+    ];
+    let s1 = lagrange_interpolation::<G>(participants[0].get_secret_share().unwrap(), &share_ids, 0);
+    let s2 = lagrange_interpolation::<G>(participants[1].get_secret_share().unwrap(), &share_ids, 1);
+    let s3 = lagrange_interpolation::<G>(participants[1].get_secret_share().unwrap(), &share_ids, 2);
+
     let mut participants = [
-        SecretParticipant::<G>::with_secret(NonZeroUsize::new(1).unwrap(), participants[0].get_secret_share().unwrap(), parameters).unwrap(),
-        SecretParticipant::<G>::with_secret(NonZeroUsize::new(2).unwrap(), participants[1].get_secret_share().unwrap(), parameters).unwrap(),
-        SecretParticipant::<G>::with_secret(NonZeroUsize::new(3).unwrap(), participants[2].get_secret_share().unwrap(), parameters).unwrap(),
+        SecretParticipant::<G>::with_secret(NonZeroUsize::new(1).unwrap(), s1, parameters).unwrap(),
+        SecretParticipant::<G>::with_secret(NonZeroUsize::new(2).unwrap(), s2, parameters).unwrap(),
+        SecretParticipant::<G>::with_secret(NonZeroUsize::new(3).unwrap(), s3, parameters).unwrap(),
     ];
     let mut new_participant = RefreshParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap();
 
@@ -251,6 +262,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
 
     // Public key doesn't match
     println!("New Pubkey match (4, 0)- {}", participants[0].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
+    println!("New public key {:?}", new_participant.get_public_key().unwrap().to_bytes().as_ref());
     // assert!(participants[0].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
 
     let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
@@ -263,4 +275,19 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
     // Pubkey doesn't match
     assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
+}
+
+
+fn lagrange_interpolation<G: Group + GroupEncoding + Default>(share: G::Scalar, shares_ids: &[G::Scalar], index: usize) -> G::Scalar {
+    use bls12_381_plus::elliptic_curve::Field;
+
+    let mut basis = G::Scalar::ONE;
+    for (j, x_j) in shares_ids.iter().enumerate() {
+        if j == index {
+            continue;
+        }
+        let denominator = *x_j - shares_ids[index];
+        basis *= *x_j * denominator.invert().unwrap();
+    }
+    basis * share
 }

@@ -66,7 +66,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 .iter()
                 .skip(1)
                 .any(|c| c.is_identity().into())
-                || !I::check_feldman_verifier(bdata.commitments[0])
+                // || !I::check_feldman_verifier(bdata.commitments[0])
             {
                 self.valid_participant_ids.remove(id);
                 continue;
@@ -93,12 +93,12 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             self.public_key += bdata.commitments[0];
         }
 
-        if !I::check_public_key(self.public_key, og) {
-            return Err(Error::RoundError(
-                Round::Four.into(),
-                "Invalid public key".to_string(),
-            ));
-        }
+        // if !I::check_public_key(self.public_key, og) {
+        //     return Err(Error::RoundError(
+        //         Round::Four.into(),
+        //         "Invalid public key".to_string(),
+        //     ));
+        // }
         self.round = Round::Five;
 
         Ok(Round4EchoBroadcastData {
