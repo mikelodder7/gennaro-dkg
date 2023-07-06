@@ -28,7 +28,7 @@ fn three_participants_curve25519() {
 #[test]
 fn three_participants_bls12381() {
     three_participants::<bls12_381_plus::G1Projective>();
-    // three_participants::<bls12_381_plus::G2Projective>();
+    three_participants::<bls12_381_plus::G2Projective>();
 }
 
 fn three_participants<G: Group + GroupEncoding + Default>() {
@@ -109,19 +109,16 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
 
     for p in &participants {
         assert!(p.round5(&r4bdata).is_ok());
-        // println!("Old publicKey- {:?}", p.get_public_key().unwrap());
     }
 
-    // println!("Pubkey match (1, 2)- {}", participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-    // println!("Pubkey match (2, 3)- {}", participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
     assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
 
     let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
     assert!(res.is_ok());
     let secret = res.unwrap();
-    println!("Old Secret- {:?}", secret);
-    println!("Old Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
+
+    // println!("Old Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
 
     assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
@@ -139,7 +136,7 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     ];
     let s1 = lagrange_interpolation::<G>(participants[0].get_secret_share().unwrap(), &share_ids, 0);
     let s2 = lagrange_interpolation::<G>(participants[1].get_secret_share().unwrap(), &share_ids, 1);
-    let s3 = lagrange_interpolation::<G>(participants[1].get_secret_share().unwrap(), &share_ids, 2);
+    let s3 = lagrange_interpolation::<G>(participants[2].get_secret_share().unwrap(), &share_ids, 2);
 
     let mut participants = [
         SecretParticipant::<G>::with_secret(NonZeroUsize::new(1).unwrap(), s1, parameters).unwrap(),
@@ -245,36 +242,28 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     // Round 5
     for p in &participants {
         assert!(p.round5(&r4bdata).is_ok());
-        // println!("New publicKey- {:?}", p.get_public_key().unwrap());
     }
 
     assert!(new_participant.round5(&r4bdata).is_ok());
-    // println!("New publicKey- {:?}", new_participant.get_public_key().unwrap());
 
-    println!("New Pubkey match (1, 2)- {}", participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-    println!("New Pubkey match (2, 3)- {}", participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
     assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-
-    // Public key doesn't match
-    println!("New Pubkey match (3, 4)- {}", participants[2].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
-    // assert!(participants[2].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
-
-    // Public key doesn't match
-    println!("New Pubkey match (4, 0)- {}", participants[0].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
-    println!("New public key {:?}", new_participant.get_public_key().unwrap().to_bytes().as_ref());
-    // assert!(participants[0].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
+    assert!(participants[2].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
+    assert!(participants[0].get_public_key().unwrap() == new_participant.get_public_key().unwrap());
 
     let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
     assert!(res.is_ok());
-    let secret = res.unwrap();
-    println!("New Secret- {:?}", secret);
+    let new_secret = res.unwrap();
+
+    // println!("New Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
 
     assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
-    // Pubkey doesn't match
     assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret, new_secret);
 }
 
 
