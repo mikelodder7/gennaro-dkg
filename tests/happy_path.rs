@@ -8,36 +8,97 @@ use vsss_rs::{
     Share,
 };
 
-#[test]
-fn three_participants_k256() {
-    three_participants::<k256::ProjectivePoint>()
+#[cfg(test)]
+mod init_dkg {
+    use super::*;
+
+    #[test]
+    fn three_participants_k256() {
+        three_participants_init::<k256::ProjectivePoint>();
+    }
+
+    #[test]
+    fn three_participants_p256() {
+        three_participants_init::<p256::ProjectivePoint>();
+    }
+
+    #[test]
+    fn three_participants_curve25519() {
+        three_participants_init::<WrappedRistretto>();
+        three_participants_init::<WrappedEdwards>();
+    }
+
+    #[test]
+    fn three_participants_bls12381() {
+        three_participants_init::<bls12_381_plus::G1Projective>();
+        three_participants_init::<bls12_381_plus::G2Projective>();
+    }
 }
 
-#[test]
-fn three_participants_p256() {
-    three_participants::<p256::ProjectivePoint>()
+// Previous threshold was 2
+#[cfg(test)]
+mod add_participant_same_threshold {
+    use super::*;
+
+    #[test]
+    fn three_participants_k256() {
+        three_participants_add_participant::<k256::ProjectivePoint>(2);
+    }
+
+    #[test]
+    fn three_participants_p256() {
+        three_participants_add_participant::<p256::ProjectivePoint>(2);
+    }
+
+    #[test]
+    fn three_participants_curve25519() {
+        three_participants_add_participant::<WrappedRistretto>(2);
+        three_participants_add_participant::<WrappedEdwards>(2);
+    }
+
+    #[test]
+    fn three_participants_bls12381() {
+        three_participants_add_participant::<bls12_381_plus::G1Projective>(2);
+        three_participants_add_participant::<bls12_381_plus::G2Projective>(2);
+    }
 }
 
-#[test]
-fn three_participants_curve25519() {
-    three_participants::<WrappedRistretto>();
-    three_participants::<WrappedEdwards>();
+// Previous threshold was 2
+#[cfg(test)]
+mod add_participant_increase_threshold {
+    use super::*;
+
+    #[test]
+    fn three_participants_k256() {
+        three_participants_add_participant::<k256::ProjectivePoint>(3);
+    }
+
+    #[test]
+    fn three_participants_p256() {
+        three_participants_add_participant::<p256::ProjectivePoint>(3);
+    }
+
+    #[test]
+    fn three_participants_curve25519() {
+        three_participants_add_participant::<WrappedRistretto>(3);
+        three_participants_add_participant::<WrappedEdwards>(3);
+    }
+
+    #[test]
+    fn three_participants_bls12381() {
+        three_participants_add_participant::<bls12_381_plus::G1Projective>(3);
+        three_participants_add_participant::<bls12_381_plus::G2Projective>(3);
+    }
 }
 
-#[test]
-fn three_participants_bls12381() {
-    three_participants::<bls12_381_plus::G1Projective>();
-    three_participants::<bls12_381_plus::G2Projective>();
-}
-
-fn three_participants<G: Group + GroupEncoding + Default>() {
+fn three_participants_init<G: Group + GroupEncoding + Default>() -> (Vec<SecretParticipant<G>>, <G as Group>::Scalar) {
     const THRESHOLD: usize = 2;
     const LIMIT: usize = 3;
 
     let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
     let limit = NonZeroUsize::new(LIMIT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
-    let mut participants = [
+    let mut participants = vec![
         SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
         SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
         SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
@@ -123,7 +184,16 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
     assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
 
+    (participants, secret)
+}
+
+fn three_participants_add_participant<G: Group + GroupEncoding + Default>(threshold: usize) {
+    let (participants, secret) = three_participants_init::<G>();
+
     // Next epoch
+    let THRESHOLD: usize = threshold;
+    const LIMIT: usize = 3;
+
     let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
     let limit = NonZeroUsize::new(LIMIT + 1).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
