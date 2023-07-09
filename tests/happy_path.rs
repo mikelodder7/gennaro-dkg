@@ -1,4 +1,3 @@
-use bls12_381_plus::elliptic_curve::Curve;
 use gennaro_dkg::*;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -134,14 +133,29 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
         G::Scalar::from(2),
         G::Scalar::from(3),
     ];
-    let s1 = lagrange_interpolation::<G>(participants[0].get_secret_share().unwrap(), &share_ids, 0);
-    let s2 = lagrange_interpolation::<G>(participants[1].get_secret_share().unwrap(), &share_ids, 1);
-    let s3 = lagrange_interpolation::<G>(participants[2].get_secret_share().unwrap(), &share_ids, 2);
 
     let mut participants = [
-        SecretParticipant::<G>::with_secret(NonZeroUsize::new(1).unwrap(), s1, parameters).unwrap(),
-        SecretParticipant::<G>::with_secret(NonZeroUsize::new(2).unwrap(), s2, parameters).unwrap(),
-        SecretParticipant::<G>::with_secret(NonZeroUsize::new(3).unwrap(), s3, parameters).unwrap(),
+        SecretParticipant::<G>::with_secret(
+            NonZeroUsize::new(1).unwrap(),
+            parameters,
+            participants[0].get_secret_share().unwrap(), 
+            &share_ids,
+            0)
+        .unwrap(),
+        SecretParticipant::<G>::with_secret(
+            NonZeroUsize::new(2).unwrap(),
+            parameters,
+            participants[1].get_secret_share().unwrap(), 
+            &share_ids,
+            1)
+        .unwrap(),
+        SecretParticipant::<G>::with_secret(
+            NonZeroUsize::new(3).unwrap(),
+            parameters,
+            participants[2].get_secret_share().unwrap(), 
+            &share_ids,
+            2)
+        .unwrap(),
     ];
     let mut new_participant = RefreshParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap();
 
@@ -264,19 +278,4 @@ fn three_participants<G: Group + GroupEncoding + Default>() {
 
     // Old shared secret remains unchanged
     assert_eq!(secret, new_secret);
-}
-
-
-fn lagrange_interpolation<G: Group + GroupEncoding + Default>(share: G::Scalar, shares_ids: &[G::Scalar], index: usize) -> G::Scalar {
-    use bls12_381_plus::elliptic_curve::Field;
-
-    let mut basis = G::Scalar::ONE;
-    for (j, x_j) in shares_ids.iter().enumerate() {
-        if j == index {
-            continue;
-        }
-        let denominator = *x_j - shares_ids[index];
-        basis *= *x_j * denominator.invert().unwrap();
-    }
-    basis * share
 }
