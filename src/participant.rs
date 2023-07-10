@@ -80,11 +80,14 @@ where
     /// This allows the polynomial to be updated versus refreshing the shares.
     pub fn with_secret(
         id: NonZeroUsize,
-        secret: G::Scalar,
         parameters: Parameters<G>,
+        share: G::Scalar,
+        shares_ids: &[G::Scalar],
+        index: usize,
     ) -> DkgResult<Self> {
         let mut rng = rand_core::OsRng;
         let blinder = G::Scalar::random(&mut rng);
+        let secret = Self::lagrange_interpolation(share, shares_ids, index);
         Self::initialize(id, parameters, secret, blinder)
     }
 
@@ -205,6 +208,19 @@ where
     /// Return the list of valid participant ids
     pub fn get_valid_participant_ids(&self) -> &BTreeSet<usize> {
         &self.valid_participant_ids
+    }
+
+    fn lagrange_interpolation(share: G::Scalar, shares_ids: &[G::Scalar], index: usize) -> G::Scalar {
+        let mut basis = G::Scalar::ONE;
+        for (j, x_j) in shares_ids.iter().enumerate() {
+            if j == index {
+                continue;
+            }
+            let denominator = *x_j - shares_ids[index];
+            basis *= *x_j * denominator.invert().unwrap();
+        }
+
+        basis * share
     }
 }
 
