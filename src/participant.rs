@@ -210,7 +210,11 @@ where
         &self.valid_participant_ids
     }
 
-    fn lagrange_interpolation(share: G::Scalar, shares_ids: &[G::Scalar], index: usize) -> G::Scalar {
+    fn lagrange_interpolation(
+        share: G::Scalar,
+        shares_ids: &[G::Scalar],
+        index: usize,
+    ) -> G::Scalar {
         let mut basis = G::Scalar::ONE;
         for (j, x_j) in shares_ids.iter().enumerate() {
             if j == index {

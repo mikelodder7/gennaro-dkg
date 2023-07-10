@@ -201,7 +201,8 @@ mod add_and_remove_participant_decrease_participant {
     }
 }
 
-fn five_participants_init<G: Group + GroupEncoding + Default>() -> (Vec<SecretParticipant<G>>, <G as Group>::Scalar) {
+fn five_participants_init<G: Group + GroupEncoding + Default>(
+) -> (Vec<SecretParticipant<G>>, <G as Group>::Scalar) {
     const THRESHOLD: usize = 3;
     const LIMIT: usize = 5;
 
@@ -328,37 +329,42 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(1).unwrap(),
             parameters,
-            participants[0].get_secret_share().unwrap(), 
+            participants[0].get_secret_share().unwrap(),
             &share_ids,
-            0)
+            0,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(2).unwrap(),
             parameters,
-            participants[1].get_secret_share().unwrap(), 
+            participants[1].get_secret_share().unwrap(),
             &share_ids,
-            1)
+            1,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(3).unwrap(),
             parameters,
-            participants[2].get_secret_share().unwrap(), 
+            participants[2].get_secret_share().unwrap(),
             &share_ids,
-            2)
+            2,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(4).unwrap(),
             parameters,
-            participants[3].get_secret_share().unwrap(), 
+            participants[3].get_secret_share().unwrap(),
             &share_ids,
-            3)
+            3,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(5).unwrap(),
             parameters,
-            participants[4].get_secret_share().unwrap(), 
+            participants[4].get_secret_share().unwrap(),
             &share_ids,
-            4)
+            4,
+        )
         .unwrap(),
     ];
     let mut new_participants = [
@@ -492,9 +498,16 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
     assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
     assert!(participants[2].get_public_key().unwrap() == participants[3].get_public_key().unwrap());
     assert!(participants[3].get_public_key().unwrap() == participants[4].get_public_key().unwrap());
-    assert!(participants[4].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap());
-    assert!(new_participants[0].get_public_key().unwrap() == new_participants[1].get_public_key().unwrap());
-    assert!(new_participants[1].get_public_key().unwrap() == participants[0].get_public_key().unwrap());
+    assert!(
+        participants[4].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap()
+    );
+    assert!(
+        new_participants[0].get_public_key().unwrap()
+            == new_participants[1].get_public_key().unwrap()
+    );
+    assert!(
+        new_participants[1].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
+    );
 
     let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
     assert!(res.is_ok());
@@ -525,33 +538,32 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
     let limit = NonZeroUsize::new(LIMIT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
 
-    let share_ids = [
-        G::Scalar::from(1),
-        G::Scalar::from(3),
-        G::Scalar::from(4),
-    ];
+    let share_ids = [G::Scalar::from(1), G::Scalar::from(3), G::Scalar::from(4)];
 
     let mut participants = [
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(1).unwrap(),
             parameters,
-            participants[0].get_secret_share().unwrap(), 
+            participants[0].get_secret_share().unwrap(),
             &share_ids,
-            0)
+            0,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(2).unwrap(),
             parameters,
-            participants[2].get_secret_share().unwrap(), 
+            participants[2].get_secret_share().unwrap(),
             &share_ids,
-            1)
+            1,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(3).unwrap(),
             parameters,
-            participants[3].get_secret_share().unwrap(), 
+            participants[3].get_secret_share().unwrap(),
             &share_ids,
-            2)
+            2,
+        )
         .unwrap(),
     ];
 
@@ -638,7 +650,9 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
     assert_eq!(secret, new_secret);
 }
 
-fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncoding + Default>(threshold: usize) {
+fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncoding + Default>(
+    threshold: usize,
+) {
     let (participants, secret) = five_participants_init::<G>();
 
     // Next epoch
@@ -650,39 +664,37 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
     let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
 
-    let share_ids = [
-        G::Scalar::from(2),
-        G::Scalar::from(3),
-        G::Scalar::from(4),
-    ];
+    let share_ids = [G::Scalar::from(2), G::Scalar::from(3), G::Scalar::from(4)];
 
     let mut participants = [
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(1).unwrap(),
             parameters,
-            participants[1].get_secret_share().unwrap(), 
+            participants[1].get_secret_share().unwrap(),
             &share_ids,
-            0)
+            0,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(2).unwrap(),
             parameters,
-            participants[2].get_secret_share().unwrap(), 
+            participants[2].get_secret_share().unwrap(),
             &share_ids,
-            1)
+            1,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(3).unwrap(),
             parameters,
-            participants[3].get_secret_share().unwrap(), 
+            participants[3].get_secret_share().unwrap(),
             &share_ids,
-            2)
+            2,
+        )
         .unwrap(),
     ];
 
-    let mut new_participants = [
-        RefreshParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
-    ];
+    let mut new_participants =
+        [RefreshParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap()];
 
     // Round 1
     let mut r1bdata = Vec::with_capacity(LIMIT + INCREMENT);
@@ -808,8 +820,12 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
 
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
     assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-    assert!(participants[2].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap());
-    assert!(new_participants[0].get_public_key().unwrap() == participants[0].get_public_key().unwrap());
+    assert!(
+        participants[2].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap()
+    );
+    assert!(
+        new_participants[0].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
+    );
 
     let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
     assert!(res.is_ok());
@@ -826,7 +842,9 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
     assert_eq!(secret, new_secret);
 }
 
-fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncoding + Default>(threshold: usize) {
+fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncoding + Default>(
+    threshold: usize,
+) {
     let (participants, secret) = five_participants_init::<G>();
 
     // Next epoch
@@ -838,33 +856,32 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
     let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
     let parameters = Parameters::<G>::new(threshold, limit);
 
-    let share_ids = [
-        G::Scalar::from(2),
-        G::Scalar::from(3),
-        G::Scalar::from(5),
-    ];
+    let share_ids = [G::Scalar::from(2), G::Scalar::from(3), G::Scalar::from(5)];
 
     let mut participants = [
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(1).unwrap(),
             parameters,
-            participants[1].get_secret_share().unwrap(), 
+            participants[1].get_secret_share().unwrap(),
             &share_ids,
-            0)
+            0,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(2).unwrap(),
             parameters,
-            participants[2].get_secret_share().unwrap(), 
+            participants[2].get_secret_share().unwrap(),
             &share_ids,
-            1)
+            1,
+        )
         .unwrap(),
         SecretParticipant::<G>::with_secret(
             NonZeroUsize::new(3).unwrap(),
             parameters,
-            participants[4].get_secret_share().unwrap(), 
+            participants[4].get_secret_share().unwrap(),
             &share_ids,
-            2)
+            2,
+        )
         .unwrap(),
     ];
 
@@ -998,10 +1015,20 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
 
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
     assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-    assert!(participants[2].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap());
-    assert!(new_participants[0].get_public_key().unwrap() == new_participants[1].get_public_key().unwrap());
-    assert!(new_participants[1].get_public_key().unwrap() == new_participants[2].get_public_key().unwrap());
-    assert!(new_participants[2].get_public_key().unwrap() == participants[0].get_public_key().unwrap());
+    assert!(
+        participants[2].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap()
+    );
+    assert!(
+        new_participants[0].get_public_key().unwrap()
+            == new_participants[1].get_public_key().unwrap()
+    );
+    assert!(
+        new_participants[1].get_public_key().unwrap()
+            == new_participants[2].get_public_key().unwrap()
+    );
+    assert!(
+        new_participants[2].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
+    );
 
     let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
     assert!(res.is_ok());
