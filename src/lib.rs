@@ -283,10 +283,22 @@ pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
     pedersen_commitments: Vec<G>,
 }
 
+#[cfg(test)]
+impl<G: Group + GroupEncoding + Default> serde_encrypt::traits::SerdeEncryptSharedKey
+    for Round1BroadcastData<G>
+{
+    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
+}
+
 /// Echo broadcast data from round 2 that should be sent to all valid participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round2EchoBroadcastData {
     valid_participant_ids: BTreeSet<usize>,
+}
+
+#[cfg(test)]
+impl serde_encrypt::traits::SerdeEncryptSharedKey for Round1P2PData {
+    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
 }
 
 /// Broadcast data from round 3 that should be sent to all valid participants
@@ -525,10 +537,10 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
             let mut i = 0;
             while let Some(b) = seq.next_element()? {
                 buffer[i] = b;
+                i += 1;
                 if i == Uint::MAX_BYTES {
                     break;
                 }
-                i += 1;
             }
             let bytes_cnt_size = Uint::peek(&buffer)
                 .ok_or_else(|| DError::invalid_value(Unexpected::Bytes(&buffer), &self))?;
@@ -545,6 +557,7 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
             let mut out = Vec::with_capacity(points.0 as usize);
             while let Some(b) = seq.next_element()? {
                 repr.as_mut()[i] = b;
+                i += 1;
                 if i == repr_len {
                     i = 0;
                     let pt = G::from_bytes(&repr);
@@ -556,7 +569,6 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
                         break;
                     }
                 }
-                i += 1;
             }
             if out.len() != points.0 as usize {
                 return Err(DError::invalid_length(out.len(), &self));
@@ -593,6 +605,7 @@ pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Dese
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_encrypt::traits::SerdeEncryptSharedKey;
     use std::collections::BTreeMap;
     use vsss_rs::{combine_shares, Share};
 
@@ -712,5 +725,269 @@ mod tests {
         let secret = res.unwrap();
 
         assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
+    }
+
+    #[test]
+    fn serialization_k256() {
+        serialization_curve::<k256::ProjectivePoint>();
+    }
+
+    #[test]
+    fn serialization_p256() {
+        serialization_curve::<p256::ProjectivePoint>();
+    }
+
+    #[test]
+    fn serialization_bls12_381_g1() {
+        serialization_curve::<bls12_381_plus::G1Projective>();
+    }
+
+    #[test]
+    fn serialization_bls12_381_g2() {
+        serialization_curve::<bls12_381_plus::G2Projective>();
+    }
+
+    #[cfg(feature = "curve25519")]
+    #[test]
+    fn serialization_curve25519() {
+        serialization_curve::<vsss_rs::curve25519::WrappedRistretto>();
+        serialization_curve::<vsss_rs::curve25519::WrappedEdwards>();
+    }
+
+    fn serialization_curve<G: Group + GroupEncoding + Default>() {
+        const THRESHOLD: usize = 2;
+        const LIMIT: usize = 3;
+
+        let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
+        let limit = NonZeroUsize::new(LIMIT).unwrap();
+        let parameters = Parameters::<G>::new(threshold, limit);
+        let mut participants = [
+            SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
+            SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
+            SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
+        ];
+
+        let mut r1bdata = Vec::<Round1BroadcastData<G>>::with_capacity(LIMIT);
+        let mut r1pdata = Vec::<BTreeMap<usize, Round1P2PData>>::with_capacity(LIMIT);
+
+        for participant in participants.iter_mut() {
+            let (bdata, pdata) = participant.round1().unwrap();
+
+            // text serialize test
+            let json = serde_json::to_string(&bdata).unwrap();
+            let res = serde_json::from_str::<Round1BroadcastData<G>>(&json);
+            assert!(res.is_ok());
+            let bdata2 = res.unwrap();
+            assert_eq!(bdata.message_generator, bdata.message_generator);
+            assert_eq!(bdata.blinder_generator, bdata2.blinder_generator);
+            assert_eq!(
+                bdata.pedersen_commitments[0],
+                bdata2.pedersen_commitments[0]
+            );
+            assert_eq!(
+                bdata.pedersen_commitments[1],
+                bdata2.pedersen_commitments[1]
+            );
+
+            let json = serde_json::to_string(&pdata).unwrap();
+            let res = serde_json::from_str::<BTreeMap<usize, Round1P2PData>>(&json);
+            assert!(res.is_ok());
+            let pdata2 = res.unwrap();
+            assert_eq!(pdata.len(), pdata2.len());
+            for (id, val) in &pdata {
+                assert!(pdata2.contains_key(id));
+                assert_eq!(val.secret_share, pdata2[id].secret_share);
+                assert_eq!(val.blind_share, pdata2[id].blind_share);
+            }
+
+            // binary serialize test
+            let bin = serde_bare::to_vec(&bdata).unwrap();
+            let res = serde_bare::from_slice::<Round1BroadcastData<G>>(&bin);
+            assert!(res.is_ok());
+            let bdata2 = res.unwrap();
+            assert_eq!(bdata.message_generator, bdata.message_generator);
+            assert_eq!(bdata.blinder_generator, bdata2.blinder_generator);
+            assert_eq!(
+                bdata.pedersen_commitments[0],
+                bdata2.pedersen_commitments[0]
+            );
+            assert_eq!(
+                bdata.pedersen_commitments[1],
+                bdata2.pedersen_commitments[1]
+            );
+
+            let bin = serde_bare::to_vec(&pdata).unwrap();
+            let res = serde_bare::from_slice::<BTreeMap<usize, Round1P2PData>>(&bin);
+            assert!(res.is_ok());
+            let pdata2 = res.unwrap();
+            assert_eq!(pdata.len(), pdata2.len());
+            for (id, val) in &pdata {
+                assert!(pdata2.contains_key(id));
+                assert_eq!(val.secret_share, pdata2[id].secret_share);
+                assert_eq!(val.blind_share, pdata2[id].blind_share);
+            }
+
+            let shared_key = serde_encrypt::shared_key::SharedKey::new([1u8; 32]);
+            let bin = bdata.encrypt(&shared_key).unwrap();
+            let res = Round1BroadcastData::<G>::decrypt_owned(&bin, &shared_key);
+            assert!(res.is_ok());
+            let bdata2 = res.unwrap();
+            assert_eq!(bdata.message_generator, bdata.message_generator);
+            assert_eq!(bdata.blinder_generator, bdata2.blinder_generator);
+            assert_eq!(
+                bdata.pedersen_commitments[0],
+                bdata2.pedersen_commitments[0]
+            );
+            assert_eq!(
+                bdata.pedersen_commitments[1],
+                bdata2.pedersen_commitments[1]
+            );
+
+            r1bdata.push(bdata);
+            r1pdata.push(pdata);
+        }
+
+        let mut r2bdata = BTreeMap::<usize, Round2EchoBroadcastData>::new();
+        r2bdata.insert(
+            1,
+            participants[0]
+                .round2(
+                    maplit::btreemap! {
+                        2 => r1bdata[1].clone(),
+                        3 => r1bdata[2].clone(),
+                    },
+                    maplit::btreemap! {
+                        2 => r1pdata[1][&1].clone(),
+                        3 => r1pdata[2][&1].clone()
+                    },
+                )
+                .unwrap(),
+        );
+        r2bdata.insert(
+            2,
+            participants[1]
+                .round2(
+                    maplit::btreemap! {
+                        1 => r1bdata[0].clone(),
+                        3 => r1bdata[2].clone(),
+                    },
+                    maplit::btreemap! {
+                        1 => r1pdata[0][&2].clone(),
+                        3 => r1pdata[2][&2].clone(),
+                    },
+                )
+                .unwrap(),
+        );
+        r2bdata.insert(
+            3,
+            participants[2]
+                .round2(
+                    maplit::btreemap! {
+                        1 => r1bdata[0].clone(),
+                        2 => r1bdata[1].clone(),
+                    },
+                    maplit::btreemap! {
+                        1 => r1pdata[0][&3].clone(),
+                        2 => r1pdata[1][&3].clone(),
+                    },
+                )
+                .unwrap(),
+        );
+
+        let json = serde_json::to_string(&r2bdata).unwrap();
+        let res = serde_json::from_str::<BTreeMap<usize, Round2EchoBroadcastData>>(&json);
+        assert!(res.is_ok());
+        let r2bdata2 = res.unwrap();
+        assert_eq!(
+            r2bdata[&1].valid_participant_ids,
+            r2bdata2[&1].valid_participant_ids
+        );
+
+        let bin = serde_bare::to_vec(&r2bdata).unwrap();
+        let res = serde_bare::from_slice::<BTreeMap<usize, Round2EchoBroadcastData>>(&bin);
+        assert!(res.is_ok());
+        let r2bdata2 = res.unwrap();
+        assert_eq!(
+            r2bdata[&1].valid_participant_ids,
+            r2bdata2[&1].valid_participant_ids
+        );
+
+        let mut r3bdata = BTreeMap::<usize, Round3BroadcastData<G>>::new();
+        r3bdata.insert(1, participants[0].round3(&r2bdata).unwrap());
+        r3bdata.insert(2, participants[1].round3(&r2bdata).unwrap());
+        r3bdata.insert(3, participants[2].round3(&r2bdata).unwrap());
+
+        let json = serde_json::to_string(&r3bdata).unwrap();
+        let res = serde_json::from_str::<BTreeMap<usize, Round3BroadcastData<G>>>(&json);
+        assert!(res.is_ok());
+        let r3bdata2 = res.unwrap();
+        assert_eq!(
+            r3bdata.get(&1).unwrap().commitments,
+            r3bdata2.get(&1).unwrap().commitments
+        );
+        assert_eq!(
+            r3bdata.get(&2).unwrap().commitments,
+            r3bdata2.get(&2).unwrap().commitments
+        );
+        assert_eq!(
+            r3bdata.get(&3).unwrap().commitments,
+            r3bdata2.get(&3).unwrap().commitments
+        );
+
+        let bin = serde_bare::to_vec(&r3bdata).unwrap();
+        let res = serde_bare::from_slice::<BTreeMap<usize, Round3BroadcastData<G>>>(&bin);
+        assert!(res.is_ok());
+        let r3bdata2 = res.unwrap();
+        assert_eq!(
+            r3bdata.get(&1).unwrap().commitments,
+            r3bdata2.get(&1).unwrap().commitments
+        );
+        assert_eq!(
+            r3bdata.get(&2).unwrap().commitments,
+            r3bdata2.get(&2).unwrap().commitments
+        );
+        assert_eq!(
+            r3bdata.get(&3).unwrap().commitments,
+            r3bdata2.get(&3).unwrap().commitments
+        );
+
+        let mut r4bdata = BTreeMap::<usize, Round4EchoBroadcastData<G>>::new();
+        r4bdata.insert(1, participants[0].round4(&r3bdata).unwrap());
+        r4bdata.insert(2, participants[1].round4(&r3bdata).unwrap());
+        r4bdata.insert(3, participants[2].round4(&r3bdata).unwrap());
+
+        let json = serde_json::to_string(&r4bdata).unwrap();
+        let res = serde_json::from_str::<BTreeMap<usize, Round4EchoBroadcastData<G>>>(&json);
+        assert!(res.is_ok());
+        let r4bdata2 = res.unwrap();
+        assert_eq!(
+            r4bdata.get(&1).unwrap().public_key,
+            r4bdata2.get(&1).unwrap().public_key
+        );
+        assert_eq!(
+            r4bdata.get(&2).unwrap().public_key,
+            r4bdata2.get(&2).unwrap().public_key
+        );
+        assert_eq!(
+            r4bdata.get(&3).unwrap().public_key,
+            r4bdata2.get(&3).unwrap().public_key
+        );
+
+        let bin = serde_bare::to_vec(&r4bdata).unwrap();
+        let res = serde_bare::from_slice::<BTreeMap<usize, Round4EchoBroadcastData<G>>>(&bin);
+        assert!(res.is_ok());
+        let r4bdata2 = res.unwrap();
+        assert_eq!(
+            r4bdata.get(&1).unwrap().public_key,
+            r4bdata2.get(&1).unwrap().public_key
+        );
+        assert_eq!(
+            r4bdata.get(&2).unwrap().public_key,
+            r4bdata2.get(&2).unwrap().public_key
+        );
+        assert_eq!(
+            r4bdata.get(&3).unwrap().public_key,
+            r4bdata2.get(&3).unwrap().public_key
+        );
     }
 }
