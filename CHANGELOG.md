@@ -5,6 +5,10 @@ All notable changes to this crate will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.5.0 - 2023-07-26
+
+- Fix binary serialization error
+
 ## v0.4.0 - 2023
 
 - Update with_secret to handle adding and removing participants
