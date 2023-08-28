@@ -119,7 +119,7 @@ where
                 .is_identity())
         .into()
         {
-            return Err(crate::Error::InitializationError(
+            return Err(Error::InitializationError(
                 "Invalid generators".to_string(),
             ));
         }
@@ -132,14 +132,14 @@ where
                 .any(|c| c.is_identity().into())
             || !I::check_feldman_verifier(feldman_commitments[0])
         {
-            return Err(crate::Error::InitializationError(
+            return Err(Error::InitializationError(
                 "Invalid commitments".to_string(),
             ));
         }
         if components.secret_shares.iter().any(|s| s.is_zero().into())
             || components.blinder_shares.iter().any(|s| s.is_zero().into())
         {
-            return Err(crate::Error::InitializationError(
+            return Err(Error::InitializationError(
                 "Invalid shares".to_string(),
             ));
         }
