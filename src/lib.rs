@@ -214,6 +214,7 @@ use std::{
 };
 use uint_zigzag::Uint;
 use vsss_rs::elliptic_curve::{group::GroupEncoding, Group, PrimeField};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use error::*;
 pub use parameters::*;
@@ -320,7 +321,7 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
 }
 
 /// Peer data from round 1 that should only be sent to a specific secret_participant
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Round1P2PData {
     secret_share: Vec<u8>,
     blind_share: Vec<u8>,
@@ -911,6 +912,18 @@ mod tests {
             r2bdata[&1].valid_participant_ids,
             r2bdata2[&1].valid_participant_ids
         );
+
+        // We explicitly zeroize the P2P secrets here as we have to assert that it's zeroized.
+        // IRL we don't have to manually zeroize it as it will be automatically dropped as we've implemented the ZeroizeOnDrop trait
+        for i in 0..3 {
+            for j in 1..4 {
+                r1pdata[i].get_mut(&j).map(|val| val.zeroize());
+                if j != i + 1 {
+                    assert!(r1pdata[i].get(&j).unwrap().secret_share.is_empty());
+                    assert!(r1pdata[i].get(&j).unwrap().blind_share.is_empty());
+                }
+            }
+        }
 
         let mut r3bdata = BTreeMap::<usize, Round3BroadcastData<G>>::new();
         r3bdata.insert(1, participants[0].round3(&r2bdata).unwrap());
