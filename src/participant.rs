@@ -4,13 +4,16 @@ mod round3;
 mod round4;
 mod round5;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use std::rc::Rc;
 
 use crate::*;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
+use soteria_rs::Protected;
 use vsss_rs::pedersen;
 use vsss_rs::{
     elliptic_curve::{ff::Field, group::GroupEncoding, Group},
@@ -47,17 +50,15 @@ pub struct Participant<I: ParticipantImpl<G>, G: Group + GroupEncoding + Default
     threshold: usize,
     limit: usize,
     round: Round,
-    #[serde(
-        serialize_with = "serialize_scalar",
-        deserialize_with = "deserialize_scalar"
-    )]
-    secret_share: G::Scalar,
+    #[serde(with = "secret_share")]
+    secret_share: Rc<RefCell<Protected>>,
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     public_key: G,
     #[serde(bound(serialize = "Round1BroadcastData<G>: Serialize"))]
     #[serde(bound(deserialize = "Round1BroadcastData<G>: Deserialize<'de>"))]
     round1_broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
-    round1_p2p_data: BTreeMap<usize, Round1P2PData>,
+    #[serde(with = "protected")]
+    round1_p2p_data: BTreeMap<usize, Rc<RefCell<Protected>>>,
     valid_participant_ids: BTreeSet<usize>,
     participant_impl: I,
 }
@@ -119,9 +120,7 @@ where
                 .is_identity())
         .into()
         {
-            return Err(Error::InitializationError(
-                "Invalid generators".to_string(),
-            ));
+            return Err(Error::InitializationError("Invalid generators".to_string()));
         }
         let pedersen_commitments = components.pedersen_verifier_set.blind_verifiers();
         let feldman_commitments = components.feldman_verifier_set.verifiers();
@@ -139,9 +138,7 @@ where
         if components.secret_shares.iter().any(|s| s.is_zero().into())
             || components.blinder_shares.iter().any(|s| s.is_zero().into())
         {
-            return Err(Error::InitializationError(
-                "Invalid shares".to_string(),
-            ));
+            return Err(Error::InitializationError("Invalid shares".to_string()));
         }
         Ok(Self {
             id: id.get(),
@@ -151,7 +148,7 @@ where
             round: Round::One,
             round1_broadcast_data: BTreeMap::new(),
             round1_p2p_data: BTreeMap::new(),
-            secret_share: G::Scalar::ZERO,
+            secret_share: Rc::new(RefCell::new(Protected::field_element(G::Scalar::ZERO))),
             public_key: G::identity(),
             valid_participant_ids: BTreeSet::new(),
             participant_impl: Default::default(),
@@ -188,7 +185,9 @@ where
     /// so [`None`] is returned until completion
     pub fn get_secret_share(&self) -> Option<G::Scalar> {
         if self.round == Round::Five {
-            Some(self.secret_share)
+            let mut protected = self.secret_share.borrow_mut();
+            let u = protected.unprotect()?;
+            u.field_element::<G::Scalar>().ok()
         } else {
             None
         }

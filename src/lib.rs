@@ -199,6 +199,8 @@ mod error;
 mod parameters;
 mod participant;
 mod pedersen_result;
+mod protected;
+mod secret_share;
 
 use rand_core::SeedableRng;
 use serde::{

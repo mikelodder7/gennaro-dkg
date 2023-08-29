@@ -72,9 +72,9 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
         }
 
         self.valid_participant_ids.clear();
-        self.secret_share =
+        let mut secret_share =
             self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
-        let og = self.secret_share;
+        let og = secret_share;
 
         // Create a unique list of secret_participant ids
         let pids = broadcast_data
@@ -130,12 +130,12 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 continue;
             }
             if let Ok(s) = p2p.secret_share.as_field_element::<G::Scalar>() {
-                self.secret_share += s;
+                secret_share += s;
                 self.valid_participant_ids.insert(*pid);
             }
         }
 
-        if self.secret_share.is_zero().into() || self.secret_share == og {
+        if secret_share.is_zero().into() || secret_share == og {
             return Err(Error::RoundError(
                 Round::Two.into(),
                 "The resulting secret key share is invalid".to_string(),
@@ -151,12 +151,19 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
 
         self.round = Round::Three;
         // Include own id in valid set
-        self.round1_p2p_data = p2p_data;
+        self.round1_p2p_data = p2p_data
+            .iter()
+            .map(|(key, value)| {
+                let val = Rc::new(RefCell::new(Protected::serde(value).unwrap()));
+                (*key, val)
+            })
+            .collect();
         self.round1_broadcast_data = broadcast_data;
 
         let echo_data = Round2EchoBroadcastData {
             valid_participant_ids: self.valid_participant_ids.clone(),
         };
+        self.secret_share = Rc::new(RefCell::new(Protected::field_element(secret_share)));
 
         Ok(echo_data)
     }

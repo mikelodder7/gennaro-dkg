@@ -1,4 +1,5 @@
 use super::*;
+use std::ops::Deref;
 
 impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
     /// Computes round 4 for this participant.
@@ -74,8 +75,14 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 self.components.feldman_verifier_set.generator(),
                 &bdata.commitments,
             );
+            let value = &self.round1_p2p_data[id];
+            let mut protected_share = value.deref().borrow_mut();
+            let u = protected_share.unprotect().ok_or_else(|| {
+                Error::RoundError(Round::Four.into(), "invalid secret unprotected".to_string())
+            })?;
+            let round1_p2p_data = u.serde::<Round1P2PData>().unwrap();
             if verifier
-                .verify_share(&self.round1_p2p_data[id].secret_share)
+                .verify_share(&round1_p2p_data.secret_share)
                 .is_err()
             {
                 self.valid_participant_ids.remove(id);
