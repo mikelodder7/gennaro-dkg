@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add soteria-rs to protect internals from side channels. No API chanages.
 
+## v0.7.0 - 2023-08-31
+
+- Change Rc to Arc for thread safety
+
+## v0.6.0 - 2023-08-29
+
+- Add RAM protection for side-channels to secret shares
+
 ## v0.5.0 - 2023-07-26
 
 - Fix binary serialization error

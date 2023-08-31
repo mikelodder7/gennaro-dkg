@@ -154,7 +154,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
         self.round1_p2p_data = p2p_data
             .iter()
             .map(|(key, value)| {
-                let val = Rc::new(RefCell::new(Protected::serde(value).unwrap()));
+                let val = Arc::new(RefCell::new(Protected::serde(value).unwrap()));
                 (*key, val)
             })
             .collect();
@@ -163,7 +163,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
         let echo_data = Round2EchoBroadcastData {
             valid_participant_ids: self.valid_participant_ids.clone(),
         };
-        self.secret_share = Rc::new(RefCell::new(Protected::field_element(secret_share)));
+        self.secret_share = Arc::new(RefCell::new(Protected::field_element(secret_share)));
 
         Ok(echo_data)
     }
