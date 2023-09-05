@@ -76,7 +76,9 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 &bdata.commitments,
             );
             let value = &self.round1_p2p_data[id];
-            let mut protected_share = value.deref().borrow_mut();
+            let mut protected_share = value.deref().lock().map_err(|_e| {
+                Error::RoundError(Round::Four.into(), "unable to lock".to_string())
+            })?;
             let u = protected_share.unprotect().ok_or_else(|| {
                 Error::RoundError(Round::Four.into(), "invalid secret unprotected".to_string())
             })?;

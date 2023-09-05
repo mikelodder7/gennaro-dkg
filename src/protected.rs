@@ -1,17 +1,18 @@
 use super::*;
 use serde::{ser, Deserialize, Deserializer, Serialize, Serializer};
 use soteria_rs::Protected;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub fn serialize<S: Serializer>(
-    input: &BTreeMap<usize, Arc<RefCell<Protected>>>,
+    input: &BTreeMap<usize, Arc<Mutex<Protected>>>,
     s: S,
 ) -> Result<S::Ok, S::Error> {
     let mut placeholder = BTreeMap::new();
     for (key, value) in input {
-        let mut p = value.borrow_mut();
+        let mut p = value
+            .lock()
+            .map_err(|_e| ser::Error::custom("unable to acquire lock".to_string()))?;
         let u = p
             .unprotect()
             .ok_or_else(|| ser::Error::custom("memory tampered"))?;
@@ -26,11 +27,11 @@ pub fn serialize<S: Serializer>(
 
 pub fn deserialize<'de, D: Deserializer<'de>>(
     d: D,
-) -> Result<BTreeMap<usize, Arc<RefCell<Protected>>>, D::Error> {
+) -> Result<BTreeMap<usize, Arc<Mutex<Protected>>>, D::Error> {
     let input = BTreeMap::<usize, Round1P2PData>::deserialize(d)?;
     let mut placeholder = BTreeMap::new();
     for (key, value) in &input {
-        let val = Arc::new(RefCell::new(Protected::serde(value).unwrap()));
+        let val = Arc::new(Mutex::new(Protected::serde(value).unwrap()));
         placeholder.insert(*key, val);
     }
     Ok(placeholder)

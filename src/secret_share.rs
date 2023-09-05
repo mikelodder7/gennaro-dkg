@@ -1,17 +1,18 @@
 use serde::{ser, Deserialize, Deserializer, Serialize, Serializer};
 use soteria_rs::Protected;
-use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-pub fn serialize<S: Serializer>(input: &Arc<RefCell<Protected>>, s: S) -> Result<S::Ok, S::Error> {
-    let mut p = input.borrow_mut();
+pub fn serialize<S: Serializer>(input: &Arc<Mutex<Protected>>, s: S) -> Result<S::Ok, S::Error> {
+    let mut p = input
+        .lock()
+        .map_err(|_e| ser::Error::custom("unable to acquire lock".to_string()))?;
     let u = p
         .unprotect()
         .ok_or_else(|| ser::Error::custom("invalid secret"))?;
     u.as_ref().serialize(s)
 }
 
-pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Arc<RefCell<Protected>>, D::Error> {
+pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Arc<Mutex<Protected>>, D::Error> {
     let input = Vec::<u8>::deserialize(d)?;
-    Ok(Arc::new(RefCell::new(Protected::new(input.as_slice()))))
+    Ok(Arc::new(Mutex::new(Protected::new(input.as_slice()))))
 }
