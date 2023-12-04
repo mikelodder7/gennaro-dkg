@@ -3,13 +3,13 @@ use soteria_rs::Protected;
 use std::sync::{Arc, Mutex};
 
 pub fn serialize<S: Serializer>(input: &Arc<Mutex<Protected>>, s: S) -> Result<S::Ok, S::Error> {
-    let mut p = input
+    let mut protected = input
         .lock()
         .map_err(|_e| ser::Error::custom("unable to acquire lock".to_string()))?;
-    let u = p
+    let unprotected = protected
         .unprotect()
         .ok_or_else(|| ser::Error::custom("invalid secret"))?;
-    u.as_ref().serialize(s)
+    unprotected.as_ref().serialize(s)
 }
 
 pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Arc<Mutex<Protected>>, D::Error> {

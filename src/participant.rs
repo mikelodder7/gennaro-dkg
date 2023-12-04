@@ -4,7 +4,7 @@ mod round3;
 mod round4;
 mod round5;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
@@ -87,7 +87,7 @@ where
     ) -> DkgResult<Self> {
         let mut rng = rand_core::OsRng;
         let blinder = G::Scalar::random(&mut rng);
-        let secret = Self::lagrange_interpolation(share, shares_ids, index);
+        let secret = Self::lagrange_interpolation(share, shares_ids, index)?;
         Self::initialize(id, parameters, secret, blinder)
     }
 
@@ -212,7 +212,17 @@ where
         share: G::Scalar,
         shares_ids: &[G::Scalar],
         index: usize,
-    ) -> G::Scalar {
+    ) -> DkgResult<G::Scalar> {
+        let mut set = HashSet::new();
+        for id in shares_ids {
+            if !set.insert(id.to_repr().as_ref().to_vec()) {
+                return Err(Error::InitializationError(format!(
+                    "duplicate id found {:?}",
+                    id
+                )));
+            }
+        }
+
         let mut basis = G::Scalar::ONE;
         for (j, x_j) in shares_ids.iter().enumerate() {
             if j == index {
@@ -222,7 +232,7 @@ where
             basis *= *x_j * denominator.invert().unwrap();
         }
 
-        basis * share
+        Ok(basis * share)
     }
 }
 
