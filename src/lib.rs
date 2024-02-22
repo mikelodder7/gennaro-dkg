@@ -251,26 +251,24 @@ impl Display for Round {
 }
 
 macro_rules! impl_round_to_int {
-    ($ident:ident) => {
-        impl From<Round> for $ident {
-            fn from(value: Round) -> Self {
-                match value {
-                    Round::One => 1,
-                    Round::Two => 2,
-                    Round::Three => 3,
-                    Round::Four => 4,
-                    Round::Five => 5,
+    ($($ident:ident),+$(,)*) => {
+        $(
+            impl From<Round> for $ident {
+                fn from(value: Round) -> Self {
+                    match value {
+                        Round::One => 1,
+                        Round::Two => 2,
+                        Round::Three => 3,
+                        Round::Four => 4,
+                        Round::Five => 5,
+                    }
                 }
             }
-        }
+        )+
     };
 }
 
-impl_round_to_int!(u8);
-impl_round_to_int!(u16);
-impl_round_to_int!(u32);
-impl_round_to_int!(u64);
-impl_round_to_int!(usize);
+impl_round_to_int!(u8, u16, u32, u128, usize);
 
 /// Broadcast data from round 1 that should be sent to all other participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -712,7 +710,8 @@ mod tests {
             let bdata = res.unwrap();
             let share = p.get_secret_share().unwrap();
             r4bdata.insert(p.get_id(), bdata);
-            r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+            r4shares
+                .push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
             assert!(p.round4(&r3bdata).is_err());
         }
 
@@ -723,7 +722,7 @@ mod tests {
             assert!(p.round5(&r4bdata).is_ok());
         }
 
-        let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
+        let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
         assert!(res.is_ok());
         let secret = res.unwrap();
 

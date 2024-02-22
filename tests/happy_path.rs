@@ -276,7 +276,7 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -290,7 +290,7 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
     assert!(participants[3].get_public_key().unwrap() == participants[4].get_public_key().unwrap());
     assert!(participants[4].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
 
-    let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let secret = res.unwrap();
 
@@ -473,7 +473,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
     for p in new_participants.iter_mut() {
@@ -482,7 +482,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -509,7 +509,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         new_participants[1].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -626,7 +626,7 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -636,7 +636,7 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
 
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
 
-    let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -797,7 +797,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
     for p in new_participants.iter_mut() {
@@ -806,7 +806,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -827,7 +827,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         new_participants[0].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -992,7 +992,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
     for p in new_participants.iter_mut() {
@@ -1001,7 +1001,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<Vec<u8> as Share>::from_field_element(p.get_id() as u8, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -1030,7 +1030,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         new_participants[2].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, u8, Vec<u8>>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 

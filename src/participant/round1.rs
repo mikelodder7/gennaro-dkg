@@ -28,8 +28,8 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             map.insert(
                 id,
                 Round1P2PData {
-                    secret_share: s.clone(),
-                    blind_share: b.clone(),
+                    secret_share: serde_bare::to_vec(&s).expect("to serialize into a tuple"),
+                    blind_share: serde_bare::to_vec(&b).expect("to serialize into a tuple"),
                 },
             );
         }

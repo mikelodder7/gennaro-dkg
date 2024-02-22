@@ -83,10 +83,10 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 Error::RoundError(Round::Four.into(), "invalid secret unprotected".to_string())
             })?;
             let round1_p2p_data = unprotected.serde::<Round1P2PData>().unwrap();
-            if verifier
-                .verify_share(&round1_p2p_data.secret_share)
-                .is_err()
-            {
+            let p2p_secret_share =
+                serde_bare::from_slice::<InnerShare>(&round1_p2p_data.secret_share)
+                    .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
+            if verifier.verify_share(&p2p_secret_share).is_err() {
                 self.valid_participant_ids.remove(id);
                 continue;
             }

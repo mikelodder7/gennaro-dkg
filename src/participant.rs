@@ -98,7 +98,8 @@ where
         blinder: G::Scalar,
     ) -> DkgResult<Self> {
         let rng = rand_core::OsRng;
-        let components = pedersen::split_secret(
+
+        let components = pedersen::split_secret::<G, [u8; 4], u32, InnerShare>(
             parameters.threshold,
             parameters.limit,
             secret,

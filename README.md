@@ -9,6 +9,12 @@
 
 The Gennaro Distributed Key Generation Algorithm as described [here](https://link.springer.com/content/pdf/10.1007/s00145-006-0347-3.pdf)
 
+## Security Notes
+
+This crate has received one security audit from Kudelski Security with no significant findings. The
+audit report can be found [here](./audit/2024-15-02_LitProtoco_Crypto_Libraries_v1.1.pdf). We'd like to thank
+[LIT Protocol](https://www.litprotocol.com) for sponsoring this audit.
+
 ## Protocol details
 
 The protocol provided in this crate provides the following
