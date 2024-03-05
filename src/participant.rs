@@ -51,8 +51,12 @@ pub struct Participant<I: ParticipantImpl<G>, G: Group + GroupEncoding + Default
     round: Round,
     #[serde(with = "secret_share")]
     secret_share: Arc<Mutex<Protected>>,
+    #[serde(with = "secret_share")]
+    blind_share: Arc<Mutex<Protected>>,
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
     public_key: G,
+    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
+    blind_key: G,
     #[serde(bound(serialize = "Round1BroadcastData<G>: Serialize"))]
     #[serde(bound(deserialize = "Round1BroadcastData<G>: Deserialize<'de>"))]
     round1_broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
@@ -149,7 +153,9 @@ where
             round1_broadcast_data: BTreeMap::new(),
             round1_p2p_data: BTreeMap::new(),
             secret_share: Arc::new(Mutex::new(Protected::field_element(G::Scalar::ZERO))),
+            blind_share: Arc::new(Mutex::new(Protected::field_element(G::Scalar::ZERO))),
             public_key: G::identity(),
+            blind_key: G::identity(),
             valid_participant_ids: BTreeSet::new(),
             participant_impl: Default::default(),
         })
@@ -181,11 +187,27 @@ where
     }
 
     /// Computed secret share.
-    /// This value is useless until all rounds have been run
+    /// This value is useless until at least 2 rounds have been run
     /// so [`None`] is returned until completion
     pub fn get_secret_share(&self) -> Option<G::Scalar> {
-        if self.round == Round::Five {
+        if self.round >= Round::Two {
             let mut protected = self.secret_share.lock().ok()?;
+            let u = protected.unprotect()?;
+            u.field_element::<G::Scalar>().ok()
+        } else {
+            None
+        }
+    }
+
+    /// Computed blind share.
+    /// This value is useless until at least 2 rounds have been run
+    /// so [`None`] is returned until completion
+    /// This is not normally used outside this protocol
+    /// however, it can be used as a second secret share if needed
+    /// thereby allowing to extract a 2nd share from one run of the protocol
+    pub fn get_blind_share(&self) -> Option<G::Scalar> {
+        if self.round >= Round::Two {
+            let mut protected = self.blind_share.lock().ok()?;
             let u = protected.unprotect()?;
             u.field_element::<G::Scalar>().ok()
         } else {

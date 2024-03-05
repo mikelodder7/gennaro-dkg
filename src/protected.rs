@@ -31,7 +31,9 @@ pub fn deserialize<'de, D: Deserializer<'de>>(
     let input = BTreeMap::<usize, Round1P2PData>::deserialize(d)?;
     let mut placeholder = BTreeMap::new();
     for (key, value) in &input {
-        let val = Arc::new(Mutex::new(Protected::serde(value).unwrap()));
+        let val = Arc::new(Mutex::new(
+            Protected::serde(value).expect("to unwrap protected"),
+        ));
         placeholder.insert(*key, val);
     }
     Ok(placeholder)

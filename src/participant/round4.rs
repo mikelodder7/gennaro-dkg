@@ -50,14 +50,14 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             if !self.round1_p2p_data.contains_key(id) {
                 // How would this happen?
                 // Round 2 removed all invalid participants
-                // Round 3 sent echo broadcast to double check valid participants
+                // Round 3 sent echo broadcast to double-check valid participants
                 self.valid_participant_ids.remove(id);
                 continue;
             }
             if !self.round1_broadcast_data.contains_key(id) {
                 // How would this happen?
                 // Round 2 removed all invalid participants
-                // Round 3 sent echo broadcast to double check valid participants
+                // Round 3 sent echo broadcast to double-check valid participants
                 self.valid_participant_ids.remove(id);
                 continue;
             }
@@ -82,7 +82,9 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             let unprotected = protected_share.unprotect().ok_or_else(|| {
                 Error::RoundError(Round::Four.into(), "invalid secret unprotected".to_string())
             })?;
-            let round1_p2p_data = unprotected.serde::<Round1P2PData>().unwrap();
+            let round1_p2p_data = unprotected
+                .serde::<Round1P2PData>()
+                .expect("to unwrap protected");
             let p2p_secret_share =
                 serde_bare::from_slice::<InnerShare>(&round1_p2p_data.secret_share)
                     .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
@@ -99,6 +101,26 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             }
 
             self.public_key += bdata.commitments[0];
+
+            // Double-check the blinder shares in case the user wants to use them
+            let blinder_verifiers = self.round1_broadcast_data[id]
+                .pedersen_commitments
+                .iter()
+                .zip(bdata.commitments.iter())
+                .map(|(b, c)| *b - *c)
+                .collect::<Vec<G>>();
+            let verifier = Vec::<G>::feldman_set_with_generator_and_verifiers(
+                self.components.pedersen_verifier_set.blinder_generator(),
+                &blinder_verifiers,
+            );
+            let p2p_blind_share =
+                serde_bare::from_slice::<InnerShare>(&round1_p2p_data.blind_share)
+                    .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
+
+            if verifier.verify_share(&p2p_blind_share).is_err() {
+                self.valid_participant_ids.remove(id);
+                continue;
+            }
         }
 
         self.round = Round::Five;

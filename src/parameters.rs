@@ -54,4 +54,14 @@ impl<G: Group + GroupEncoding + Default> Parameters<G> {
             blinder_generator,
         }
     }
+
+    /// Get the message generator
+    pub fn message_generator(&self) -> G {
+        self.message_generator
+    }
+
+    /// Get the blinder generator
+    pub fn blinder_generator(&self) -> G {
+        self.blinder_generator
+    }
 }

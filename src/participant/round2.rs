@@ -74,7 +74,10 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
         self.valid_participant_ids.clear();
         let mut secret_share =
             self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
-        let og = secret_share;
+        let mut blind_share =
+            self.components.blinder_shares[self.id - 1].as_field_element::<G::Scalar>()?;
+        let og_secret = secret_share;
+        let og_blind = blind_share;
 
         // Create a unique list of secret_participant ids
         let pids = broadcast_data
@@ -94,9 +97,9 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 continue;
             }
 
-            let bdata = opt_bdata.unwrap();
+            let bdata = opt_bdata.expect("to unwrap broadcast data");
 
-            // If not using the same generator then its a problem
+            // If not using the same generator then it's a problem
             if bdata.blinder_generator != self.components.pedersen_verifier_set.blinder_generator()
                 || bdata.message_generator
                     != self.components.pedersen_verifier_set.secret_generator()
@@ -112,7 +115,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             {
                 continue;
             }
-            let p2p = opt_p2p_data.unwrap();
+            let p2p = opt_p2p_data.expect("to unwrap p2p_data");
             let p2p_secret_share = serde_bare::from_slice::<InnerShare>(&p2p.secret_share)
                 .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
             let p2p_blind_share = serde_bare::from_slice::<InnerShare>(&p2p.blind_share)
@@ -137,12 +140,21 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 secret_share += s;
                 self.valid_participant_ids.insert(*pid);
             }
+            if let Ok(b) = p2p_blind_share.as_field_element::<G::Scalar>() {
+                blind_share += b;
+            }
         }
 
-        if secret_share.is_zero().into() || secret_share == og {
+        if secret_share.is_zero().into() || secret_share == og_secret {
             return Err(Error::RoundError(
                 Round::Two.into(),
                 "The resulting secret key share is invalid".to_string(),
+            ));
+        }
+        if blind_share.is_zero().into() || blind_share == og_blind {
+            return Err(Error::RoundError(
+                Round::Two.into(),
+                "The resulting blind key share is invalid".to_string(),
             ));
         }
         self.valid_participant_ids.insert(self.id);
@@ -158,7 +170,9 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
         self.round1_p2p_data = p2p_data
             .iter()
             .map(|(key, value)| {
-                let val = Arc::new(Mutex::new(Protected::serde(value).unwrap()));
+                let val = Arc::new(Mutex::new(
+                    Protected::serde(value).expect("to unwrap protected"),
+                ));
                 (*key, val)
             })
             .collect();
@@ -168,6 +182,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             valid_participant_ids: self.valid_participant_ids.clone(),
         };
         self.secret_share = Arc::new(Mutex::new(Protected::field_element(secret_share)));
+        self.blind_share = Arc::new(Mutex::new(Protected::field_element(blind_share)));
 
         Ok(echo_data)
     }

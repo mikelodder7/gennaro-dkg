@@ -270,13 +270,18 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
 
     let mut r4bdata = BTreeMap::new();
     let mut r4shares = Vec::with_capacity(LIMIT);
+    let mut r4blind_shares = Vec::with_capacity(LIMIT);
     for p in participants.iter_mut() {
         let res = p.round4(&r3bdata);
         assert!(res.is_ok());
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
+        let blind_share = p.get_blind_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
         r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4blind_shares.push(
+            <InnerShare as Share>::from_field_element(p.get_id() as u32, blind_share).unwrap(),
+        );
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -301,6 +306,10 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
     assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&5].public_key, G::generator() * secret);
+
+    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4blind_shares);
+    assert!(res.is_ok());
+    let blinder = res.unwrap();
 
     (participants, secret)
 }

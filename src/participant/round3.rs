@@ -7,7 +7,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
     /// sure this participant reached the same decision
     /// as all honest participants.
     ///
-    /// If all reported ids match this participants expectations
+    /// If all reported ids match this participant's expectations
     /// the round will succeed and continue to the next round.
     ///
     /// Throws an error if this participant is not in round 3.

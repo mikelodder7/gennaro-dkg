@@ -188,7 +188,8 @@
     unconditional_recursion,
     unused_extern_crates,
     trivial_casts,
-    trivial_numeric_casts
+    trivial_numeric_casts,
+    clippy::unwrap_used
 )]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
