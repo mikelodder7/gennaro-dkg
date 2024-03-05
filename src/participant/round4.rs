@@ -122,7 +122,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 continue;
             }
         }
-
+        self.blind_key -= self.public_key;
         self.round = Round::Five;
 
         Ok(Round4EchoBroadcastData {

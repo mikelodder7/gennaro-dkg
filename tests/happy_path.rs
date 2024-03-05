@@ -31,153 +31,80 @@ fn add_participant_same_threshold<G: Group + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
-    five_participants_add_participant::<G>(3);
+    five_participants_add_participant::<G>(threshold);
 }
 
 // Previous threshold was 3, new threshold is 5
-#[cfg(test)]
-mod add_participant_increase_threshold {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_add_participant::<k256::ProjectivePoint>(5);
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_add_participant::<p256::ProjectivePoint>(5);
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_add_participant::<WrappedRistretto>(4);
-        five_participants_add_participant::<WrappedEdwards>(5);
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_add_participant::<blsful::inner_types::G1Projective>(5);
-        five_participants_add_participant::<blsful::inner_types::G2Projective>(4);
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 5)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 5)]
+#[case::ed25519(WrappedEdwards::default(), 5)]
+#[case::ristretto25519(WrappedRistretto::default(), 5)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
+fn add_participant_increase_threshold<G: Group + GroupEncoding + Default>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    five_participants_add_participant::<G>(threshold);
 }
 
 // Previous threshold was 3
-#[cfg(test)]
-mod remove_participant_same_threshold {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_remove_participant::<k256::ProjectivePoint>(3);
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_remove_participant::<p256::ProjectivePoint>(3);
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_remove_participant::<WrappedRistretto>(3);
-        five_participants_remove_participant::<WrappedEdwards>(3);
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_remove_participant::<blsful::inner_types::G1Projective>(3);
-        five_participants_remove_participant::<blsful::inner_types::G2Projective>(3);
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 3)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 3)]
+#[case::ed25519(WrappedEdwards::default(), 3)]
+#[case::ristretto25519(WrappedRistretto::default(), 3)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 3)]
+fn remove_participant_same_threshold<G: Group + GroupEncoding + Default>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    five_participants_remove_participant::<G>(threshold);
 }
 
 // Previous threshold was 3, new threshold is 2
-#[cfg(test)]
-mod remove_participant_decrease_threshold {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_remove_participant::<k256::ProjectivePoint>(2);
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_remove_participant::<p256::ProjectivePoint>(2);
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_remove_participant::<WrappedRistretto>(2);
-        five_participants_remove_participant::<WrappedEdwards>(2);
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_remove_participant::<blsful::inner_types::G1Projective>(2);
-        five_participants_remove_participant::<blsful::inner_types::G2Projective>(2);
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 2)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 2)]
+#[case::ed25519(WrappedEdwards::default(), 2)]
+#[case::ristretto25519(WrappedRistretto::default(), 2)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 2)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
+fn remove_participant_decrease_threshold<G: Group + GroupEncoding + Default>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    five_participants_remove_participant::<G>(threshold);
 }
 
-#[cfg(test)]
-mod add_and_remove_participant_increase_participant {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_add_and_remove_increase_participant::<k256::ProjectivePoint>(5);
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_add_and_remove_increase_participant::<p256::ProjectivePoint>(4);
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_add_and_remove_increase_participant::<WrappedRistretto>(6);
-        five_participants_add_and_remove_increase_participant::<WrappedEdwards>(2);
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_add_and_remove_increase_participant::<blsful::inner_types::G1Projective>(
-            5,
-        );
-        five_participants_add_and_remove_increase_participant::<blsful::inner_types::G2Projective>(
-            2,
-        );
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 5)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 5)]
+#[case::ed25519(WrappedEdwards::default(), 5)]
+#[case::ristretto25519(WrappedRistretto::default(), 5)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
+fn add_and_remove_participant_increase_participant<G: Group + GroupEncoding + Default>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    five_participants_add_and_remove_increase_participant::<G>(threshold);
 }
 
-#[cfg(test)]
-mod add_and_remove_participant_decrease_participant {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_add_and_remove_decrease_participant::<k256::ProjectivePoint>(3);
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_add_and_remove_decrease_participant::<p256::ProjectivePoint>(4);
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_add_and_remove_decrease_participant::<WrappedRistretto>(3);
-        five_participants_add_and_remove_decrease_participant::<WrappedEdwards>(2);
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_add_and_remove_decrease_participant::<blsful::inner_types::G1Projective>(
-            3,
-        );
-        five_participants_add_and_remove_decrease_participant::<blsful::inner_types::G2Projective>(
-            4,
-        );
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 3)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 4)]
+#[case::ed25519(WrappedEdwards::default(), 3)]
+#[case::ristretto25519(WrappedRistretto::default(), 2)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
+fn add_and_remove_participant_decrease_participant<G: Group + GroupEncoding + Default>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    five_participants_add_and_remove_decrease_participant::<G>(threshold);
 }
 
 fn five_participants_init<G: Group + GroupEncoding + Default>(
@@ -288,7 +215,6 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
 
     let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4blind_shares);
     assert!(res.is_ok());
-    let blinder = res.unwrap();
 
     (participants, secret)
 }

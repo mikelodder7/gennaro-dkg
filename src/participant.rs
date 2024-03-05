@@ -294,3 +294,191 @@ impl<G: Group + GroupEncoding + Default> ParticipantImpl<G> for RefreshParticipa
         (key.is_identity() & computed.is_identity()).into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use blsful::inner_types::*;
+    use rand_chacha::ChaCha12Rng;
+    use rand_core::SeedableRng;
+    use vsss_rs::{Pedersen, PedersenResult, Share};
+
+    #[test]
+    fn reconstruct_blind_key() {
+        let mut rng = ChaCha12Rng::from_seed([1u8; 32]);
+        let secrets = [
+            Scalar::random(&mut rng),
+            Scalar::random(&mut rng),
+            Scalar::random(&mut rng),
+        ];
+        let blind_secrets = [
+            Scalar::random(&mut rng),
+            Scalar::random(&mut rng),
+            Scalar::random(&mut rng),
+        ];
+
+        let pedersen_verifier_set0 = vsss_rs::StdVsss::<G1Projective, [u8; 1], u8, InnerShare>::split_secret_with_blind_verifier(
+            2, 3, secrets[0], Some(blind_secrets[0]), None, None, &mut rng
+        ).unwrap();
+
+        let pedersen_verifier_set1 = vsss_rs::StdVsss::<G1Projective, [u8; 1], u8, InnerShare>::split_secret_with_blind_verifier(
+            2, 3, secrets[1], Some(blind_secrets[1]), None, None, &mut rng
+        ).unwrap();
+
+        let pedersen_verifier_set2 = vsss_rs::StdVsss::<G1Projective, [u8; 1], u8, InnerShare>::split_secret_with_blind_verifier(
+            2, 3, secrets[2], Some(blind_secrets[2]), None, None, &mut rng
+        ).unwrap();
+
+        let secret_shares0 = pedersen_verifier_set0.secret_shares();
+        let blinder_shares0 = pedersen_verifier_set0.blinder_shares();
+        let pedersen_verifiers0 = pedersen_verifier_set0.pedersen_verifier_set();
+        let blind_verifiers0 = pedersen_verifiers0.blind_verifiers();
+        let secret_verifiers0 = pedersen_verifier_set0.feldman_verifier_set().verifiers();
+
+        assert_eq!(
+            blind_verifiers0[0],
+            pedersen_verifiers0.secret_generator() * secrets[0]
+                + pedersen_verifiers0.blinder_generator() * blind_secrets[0]
+        );
+        assert_eq!(
+            secret_verifiers0[0],
+            pedersen_verifiers0.secret_generator() * secrets[0]
+        );
+
+        let blind_key0 = blind_verifiers0[0] - secret_verifiers0[0];
+        assert_eq!(
+            blind_key0,
+            pedersen_verifiers0.blinder_generator() * blind_secrets[0]
+        );
+
+        let secret_shares1 = pedersen_verifier_set1.secret_shares();
+        let blinder_shares1 = pedersen_verifier_set1.blinder_shares();
+        let pedersen_verifiers1 = pedersen_verifier_set1.pedersen_verifier_set();
+        let blind_verifiers1 = pedersen_verifiers1.blind_verifiers();
+        let secret_verifiers1 = pedersen_verifier_set1.feldman_verifier_set().verifiers();
+
+        assert_eq!(
+            blind_verifiers1[0],
+            pedersen_verifiers1.secret_generator() * secrets[1]
+                + pedersen_verifiers1.blinder_generator() * blind_secrets[1]
+        );
+        assert_eq!(
+            secret_verifiers1[0],
+            pedersen_verifiers1.secret_generator() * secrets[1]
+        );
+
+        let blind_key1 = blind_verifiers1[0] - secret_verifiers1[0];
+        assert_eq!(
+            blind_key1,
+            pedersen_verifiers1.blinder_generator() * blind_secrets[1]
+        );
+
+        let secret_shares2 = pedersen_verifier_set2.secret_shares();
+        let blinder_shares2 = pedersen_verifier_set2.blinder_shares();
+        let pedersen_verifiers2 = pedersen_verifier_set2.pedersen_verifier_set();
+        let blind_verifiers2 = pedersen_verifiers2.blind_verifiers();
+        let secret_verifiers2 = pedersen_verifier_set2.feldman_verifier_set().verifiers();
+
+        assert_eq!(
+            blind_verifiers2[0],
+            pedersen_verifiers2.secret_generator() * secrets[2]
+                + pedersen_verifiers2.blinder_generator() * blind_secrets[2]
+        );
+        assert_eq!(
+            secret_verifiers2[0],
+            pedersen_verifiers2.secret_generator() * secrets[2]
+        );
+
+        let blind_key2 = blind_verifiers2[0] - secret_verifiers2[0];
+        assert_eq!(
+            blind_key2,
+            pedersen_verifiers2.blinder_generator() * blind_secrets[2]
+        );
+
+        let secret_share0 = [
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares0[0]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares1[0]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares2[0]).unwrap(),
+        ]
+        .iter()
+        .sum::<Scalar>();
+        let secret_share1 = [
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares0[1]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares1[1]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares2[1]).unwrap(),
+        ]
+        .iter()
+        .sum::<Scalar>();
+
+        let secret_share2 = [
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares0[2]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares1[2]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares2[2]).unwrap(),
+        ]
+        .iter()
+        .sum::<Scalar>();
+
+        let blind_share0 = [
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares0[0]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares1[0]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares2[0]).unwrap(),
+        ]
+        .iter()
+        .sum::<Scalar>();
+        let blind_share1 = [
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares0[1]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares1[1]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares2[1]).unwrap(),
+        ]
+        .iter()
+        .sum::<Scalar>();
+        let blind_share2 = [
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares0[2]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares1[2]).unwrap(),
+            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares2[2]).unwrap(),
+        ]
+        .iter()
+        .sum::<Scalar>();
+
+        let public_key = [
+            pedersen_verifier_set0.feldman_verifier_set().verifiers()[0],
+            pedersen_verifier_set1.feldman_verifier_set().verifiers()[0],
+            pedersen_verifier_set2.feldman_verifier_set().verifiers()[0],
+        ]
+        .iter()
+        .sum::<G1Projective>();
+
+        let original_secret: Scalar = vsss_rs::combine_shares(&[
+            <InnerShare as Share>::from_field_element(1u8, secret_share0).unwrap(),
+            <InnerShare as Share>::from_field_element(2u8, secret_share1).unwrap(),
+            <InnerShare as Share>::from_field_element(3u8, secret_share2).unwrap(),
+        ])
+        .unwrap();
+        assert_eq!(original_secret, secrets.iter().sum());
+        assert_eq!(public_key, G1Projective::GENERATOR * original_secret);
+
+        let blind_key = [
+            pedersen_verifier_set0
+                .pedersen_verifier_set()
+                .blind_verifiers()[0],
+            pedersen_verifier_set1
+                .pedersen_verifier_set()
+                .blind_verifiers()[0],
+            pedersen_verifier_set2
+                .pedersen_verifier_set()
+                .blind_verifiers()[0],
+        ]
+        .iter()
+        .sum::<G1Projective>()
+            - public_key;
+
+        let original_blinder: Scalar = vsss_rs::combine_shares(&[
+            <InnerShare as Share>::from_field_element(1u8, blind_share0).unwrap(),
+            <InnerShare as Share>::from_field_element(2u8, blind_share1).unwrap(),
+            <InnerShare as Share>::from_field_element(3u8, blind_share2).unwrap(),
+        ])
+        .unwrap();
+        assert_eq!(original_blinder, blind_secrets.iter().sum());
+        assert_eq!(blind_key0 + blind_key1 + blind_key2, blind_key);
+    }
+}

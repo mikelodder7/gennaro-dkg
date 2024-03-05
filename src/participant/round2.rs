@@ -76,6 +76,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
         let mut blind_share =
             self.components.blinder_shares[self.id - 1].as_field_element::<G::Scalar>()?;
+        let mut blind_key = self.components.pedersen_verifier_set.blind_verifiers()[0];
         let og_secret = secret_share;
         let og_blind = blind_share;
 
@@ -143,6 +144,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             if let Ok(b) = p2p_blind_share.as_field_element::<G::Scalar>() {
                 blind_share += b;
             }
+            blind_key += bdata.pedersen_commitments[0];
         }
 
         if secret_share.is_zero().into() || secret_share == og_secret {
@@ -183,6 +185,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
         };
         self.secret_share = Arc::new(Mutex::new(Protected::field_element(secret_share)));
         self.blind_share = Arc::new(Mutex::new(Protected::field_element(blind_share)));
+        self.blind_key = blind_key;
 
         Ok(echo_data)
     }
