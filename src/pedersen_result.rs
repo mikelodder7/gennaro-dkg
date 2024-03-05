@@ -6,7 +6,7 @@ use vsss_rs::{
 };
 
 /// The inner representation of the secret shares
-pub type InnerShare = (u32, Vec<u8>);
+pub type InnerShare = Vec<u8>;
 
 /// The pedersen result used by the DKG
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -35,7 +35,7 @@ pub struct GennaroDkgPedersenResult<G: Group + GroupEncoding + Default> {
     pub pedersen_verifier_set: Vec<G>,
 }
 
-impl<G: Group + GroupEncoding + Default> PedersenResult<G, [u8; 4], u32, InnerShare>
+impl<G: Group + GroupEncoding + Default> PedersenResult<G, [u8; 1], u8, InnerShare>
     for GennaroDkgPedersenResult<G>
 {
     type ShareSet = Vec<InnerShare>;
@@ -79,10 +79,10 @@ impl<G: Group + GroupEncoding + Default> PedersenResult<G, [u8; 4], u32, InnerSh
     }
 }
 
-impl<G: Group + GroupEncoding + Default> From<StdPedersenResult<G, [u8; 4], u32, InnerShare>>
+impl<G: Group + GroupEncoding + Default> From<StdPedersenResult<G, [u8; 1], u8, InnerShare>>
     for GennaroDkgPedersenResult<G>
 {
-    fn from(value: StdPedersenResult<G, [u8; 4], u32, InnerShare>) -> Self {
+    fn from(value: StdPedersenResult<G, [u8; 1], u8, InnerShare>) -> Self {
         Self {
             blinder: value.blinder(),
             secret_shares: value.secret_shares().clone(),

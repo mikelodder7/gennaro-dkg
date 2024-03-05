@@ -116,10 +116,10 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 continue;
             }
             let p2p = opt_p2p_data.expect("to unwrap p2p_data");
-            let p2p_secret_share = serde_bare::from_slice::<InnerShare>(&p2p.secret_share)
-                .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
-            let p2p_blind_share = serde_bare::from_slice::<InnerShare>(&p2p.blind_share)
-                .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
+            let p2p_secret_share = &p2p.secret_share; //serde_bare::from_slice::<InnerShare>(&p2p.secret_share)
+                                                      // .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
+            let p2p_blind_share = &p2p.blind_share; // serde_bare::from_slice::<InnerShare>(&p2p.blind_share)
+                                                    // .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
             if (p2p_secret_share.is_zero() | p2p_blind_share.is_zero()).into() {
                 continue;
             }
@@ -131,7 +131,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             );
 
             if verifier
-                .verify_share_and_blinder(&p2p_secret_share, &p2p_blind_share)
+                .verify_share_and_blinder(p2p_secret_share, p2p_blind_share)
                 .is_err()
             {
                 continue;

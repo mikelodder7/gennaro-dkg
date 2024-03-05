@@ -85,10 +85,10 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             let round1_p2p_data = unprotected
                 .serde::<Round1P2PData>()
                 .expect("to unwrap protected");
-            let p2p_secret_share =
-                serde_bare::from_slice::<InnerShare>(&round1_p2p_data.secret_share)
-                    .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
-            if verifier.verify_share(&p2p_secret_share).is_err() {
+            let p2p_secret_share = &round1_p2p_data.secret_share;
+            // serde_bare::from_slice::<InnerShare>(&round1_p2p_data.secret_share)
+            //     .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
+            if verifier.verify_share(p2p_secret_share).is_err() {
                 self.valid_participant_ids.remove(id);
                 continue;
             }
@@ -113,11 +113,11 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 self.components.pedersen_verifier_set.blinder_generator(),
                 &blinder_verifiers,
             );
-            let p2p_blind_share =
-                serde_bare::from_slice::<InnerShare>(&round1_p2p_data.blind_share)
-                    .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
+            let p2p_blind_share = &round1_p2p_data.blind_share;
+            // serde_bare::from_slice::<InnerShare>(&round1_p2p_data.blind_share)
+            //     .map_err(|e| Error::RoundError(Round::Four.into(), e.to_string()))?;
 
-            if verifier.verify_share(&p2p_blind_share).is_err() {
+            if verifier.verify_share(p2p_blind_share).is_err() {
                 self.valid_participant_ids.remove(id);
                 continue;
             }

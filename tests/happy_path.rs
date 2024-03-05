@@ -1,4 +1,5 @@
 use gennaro_dkg::*;
+use rstest::*;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use vsss_rs::{
@@ -8,59 +9,29 @@ use vsss_rs::{
     Share,
 };
 
-#[cfg(test)]
-mod init_dkg {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_init::<k256::ProjectivePoint>();
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_init::<p256::ProjectivePoint>();
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_init::<WrappedRistretto>();
-        five_participants_init::<WrappedEdwards>();
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_init::<bls12_381_plus::G1Projective>();
-        five_participants_init::<bls12_381_plus::G2Projective>();
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY)]
+#[case::p256(p256::ProjectivePoint::IDENTITY)]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
+fn init_dkg<G: Group + GroupEncoding + Default>(#[case] _g: G) {
+    five_participants_init::<G>();
 }
 
-// Previous threshold was 3
-#[cfg(test)]
-mod add_participant_same_threshold {
-    use super::*;
-
-    #[test]
-    fn five_participants_k256() {
-        five_participants_add_participant::<k256::ProjectivePoint>(3);
-    }
-
-    #[test]
-    fn five_participants_p256() {
-        five_participants_add_participant::<p256::ProjectivePoint>(3);
-    }
-
-    #[test]
-    fn five_participants_curve25519() {
-        five_participants_add_participant::<WrappedRistretto>(3);
-        five_participants_add_participant::<WrappedEdwards>(3);
-    }
-
-    #[test]
-    fn five_participants_bls12381() {
-        five_participants_add_participant::<bls12_381_plus::G1Projective>(3);
-        five_participants_add_participant::<bls12_381_plus::G2Projective>(3);
-    }
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 3)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 3)]
+#[case::ed25519(WrappedEdwards::default(), 3)]
+#[case::ristretto25519(WrappedRistretto::default(), 3)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 3)]
+fn add_participant_same_threshold<G: Group + GroupEncoding + Default>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    five_participants_add_participant::<G>(3);
 }
 
 // Previous threshold was 3, new threshold is 5
@@ -86,8 +57,8 @@ mod add_participant_increase_threshold {
 
     #[test]
     fn five_participants_bls12381() {
-        five_participants_add_participant::<bls12_381_plus::G1Projective>(5);
-        five_participants_add_participant::<bls12_381_plus::G2Projective>(4);
+        five_participants_add_participant::<blsful::inner_types::G1Projective>(5);
+        five_participants_add_participant::<blsful::inner_types::G2Projective>(4);
     }
 }
 
@@ -114,8 +85,8 @@ mod remove_participant_same_threshold {
 
     #[test]
     fn five_participants_bls12381() {
-        five_participants_remove_participant::<bls12_381_plus::G1Projective>(3);
-        five_participants_remove_participant::<bls12_381_plus::G2Projective>(3);
+        five_participants_remove_participant::<blsful::inner_types::G1Projective>(3);
+        five_participants_remove_participant::<blsful::inner_types::G2Projective>(3);
     }
 }
 
@@ -142,8 +113,8 @@ mod remove_participant_decrease_threshold {
 
     #[test]
     fn five_participants_bls12381() {
-        five_participants_remove_participant::<bls12_381_plus::G1Projective>(2);
-        five_participants_remove_participant::<bls12_381_plus::G2Projective>(2);
+        five_participants_remove_participant::<blsful::inner_types::G1Projective>(2);
+        five_participants_remove_participant::<blsful::inner_types::G2Projective>(2);
     }
 }
 
@@ -169,8 +140,12 @@ mod add_and_remove_participant_increase_participant {
 
     #[test]
     fn five_participants_bls12381() {
-        five_participants_add_and_remove_increase_participant::<bls12_381_plus::G1Projective>(5);
-        five_participants_add_and_remove_increase_participant::<bls12_381_plus::G2Projective>(2);
+        five_participants_add_and_remove_increase_participant::<blsful::inner_types::G1Projective>(
+            5,
+        );
+        five_participants_add_and_remove_increase_participant::<blsful::inner_types::G2Projective>(
+            2,
+        );
     }
 }
 
@@ -196,8 +171,12 @@ mod add_and_remove_participant_decrease_participant {
 
     #[test]
     fn five_participants_bls12381() {
-        five_participants_add_and_remove_decrease_participant::<bls12_381_plus::G1Projective>(3);
-        five_participants_add_and_remove_decrease_participant::<bls12_381_plus::G2Projective>(4);
+        five_participants_add_and_remove_decrease_participant::<blsful::inner_types::G1Projective>(
+            3,
+        );
+        five_participants_add_and_remove_decrease_participant::<blsful::inner_types::G2Projective>(
+            4,
+        );
     }
 }
 
@@ -278,9 +257,9 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
         let share = p.get_secret_share().unwrap();
         let blind_share = p.get_blind_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         r4blind_shares.push(
-            <InnerShare as Share>::from_field_element(p.get_id() as u32, blind_share).unwrap(),
+            <InnerShare as Share>::from_field_element(p.get_id() as u8, blind_share).unwrap(),
         );
         assert!(p.round4(&r3bdata).is_err());
     }
@@ -295,7 +274,7 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
     assert!(participants[3].get_public_key().unwrap() == participants[4].get_public_key().unwrap());
     assert!(participants[4].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
 
-    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let secret = res.unwrap();
 
@@ -307,7 +286,7 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
     assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&5].public_key, G::generator() * secret);
 
-    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4blind_shares);
+    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4blind_shares);
     assert!(res.is_ok());
     let blinder = res.unwrap();
 
@@ -482,7 +461,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
     for p in new_participants.iter_mut() {
@@ -491,7 +470,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -518,7 +497,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         new_participants[1].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -635,7 +614,7 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -645,7 +624,7 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
 
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
 
-    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -806,7 +785,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
     for p in new_participants.iter_mut() {
@@ -815,7 +794,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -836,7 +815,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         new_participants[0].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -1001,7 +980,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
     for p in new_participants.iter_mut() {
@@ -1010,7 +989,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         let bdata = res.unwrap();
         let share = p.get_secret_share().unwrap();
         r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
         assert!(p.round4(&r3bdata).is_err());
     }
 
@@ -1039,7 +1018,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         new_participants[2].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 

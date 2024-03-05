@@ -103,7 +103,7 @@ where
     ) -> DkgResult<Self> {
         let rng = rand_core::OsRng;
 
-        let components = pedersen::split_secret::<G, [u8; 4], u32, InnerShare>(
+        let components = pedersen::split_secret::<G, [u8; 1], u8, InnerShare>(
             parameters.threshold,
             parameters.limit,
             secret,

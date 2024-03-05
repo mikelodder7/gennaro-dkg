@@ -629,8 +629,8 @@ mod tests {
 
     #[test]
     fn one_corrupted_party_bls12_381() {
-        one_corrupted_party::<bls12_381_plus::G1Projective>();
-        one_corrupted_party::<bls12_381_plus::G2Projective>();
+        one_corrupted_party::<blsful::inner_types::G1Projective>();
+        one_corrupted_party::<blsful::inner_types::G2Projective>();
     }
 
     fn one_corrupted_party<G: Group + GroupEncoding + Default>() {
@@ -712,7 +712,7 @@ mod tests {
             let share = p.get_secret_share().unwrap();
             r4bdata.insert(p.get_id(), bdata);
             r4shares
-                .push(<InnerShare as Share>::from_field_element(p.get_id() as u32, share).unwrap());
+                .push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
             assert!(p.round4(&r3bdata).is_err());
         }
 
@@ -723,7 +723,7 @@ mod tests {
             assert!(p.round5(&r4bdata).is_ok());
         }
 
-        let res = combine_shares::<G::Scalar, [u8; 4], u32, InnerShare>(&r4shares);
+        let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
         assert!(res.is_ok());
         let secret = res.unwrap();
 
@@ -742,12 +742,12 @@ mod tests {
 
     #[test]
     fn serialization_bls12_381_g1() {
-        serialization_curve::<bls12_381_plus::G1Projective>();
+        serialization_curve::<blsful::inner_types::G1Projective>();
     }
 
     #[test]
     fn serialization_bls12_381_g2() {
-        serialization_curve::<bls12_381_plus::G2Projective>();
+        serialization_curve::<blsful::inner_types::G2Projective>();
     }
 
     #[cfg(feature = "curve25519")]
