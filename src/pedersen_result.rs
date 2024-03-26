@@ -35,7 +35,7 @@ pub struct GennaroDkgPedersenResult<G: Group + GroupEncoding + Default> {
     pub pedersen_verifier_set: Vec<G>,
 }
 
-impl<G: Group + GroupEncoding + Default> PedersenResult<G, [u8; 1], u8, InnerShare>
+impl<G: Group + GroupEncoding + Default> PedersenResult<G, u8, InnerShare>
     for GennaroDkgPedersenResult<G>
 {
     type ShareSet = Vec<InnerShare>;
@@ -79,10 +79,10 @@ impl<G: Group + GroupEncoding + Default> PedersenResult<G, [u8; 1], u8, InnerSha
     }
 }
 
-impl<G: Group + GroupEncoding + Default> From<StdPedersenResult<G, [u8; 1], u8, InnerShare>>
+impl<G: Group + GroupEncoding + Default> From<StdPedersenResult<G, u8, InnerShare>>
     for GennaroDkgPedersenResult<G>
 {
-    fn from(value: StdPedersenResult<G, [u8; 1], u8, InnerShare>) -> Self {
+    fn from(value: StdPedersenResult<G, u8, InnerShare>) -> Self {
         Self {
             blinder: value.blinder(),
             secret_shares: value.secret_shares().clone(),

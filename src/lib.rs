@@ -723,7 +723,7 @@ mod tests {
             assert!(p.round5(&r4bdata).is_ok());
         }
 
-        let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
+        let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
         assert!(res.is_ok());
         let secret = res.unwrap();
 

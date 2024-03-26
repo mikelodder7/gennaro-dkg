@@ -103,7 +103,7 @@ where
     ) -> DkgResult<Self> {
         let rng = rand_core::OsRng;
 
-        let components = pedersen::split_secret::<G, [u8; 1], u8, InnerShare>(
+        let components = pedersen::split_secret::<G, u8, InnerShare>(
             parameters.threshold,
             parameters.limit,
             secret,
@@ -317,17 +317,41 @@ mod tests {
             Scalar::random(&mut rng),
         ];
 
-        let pedersen_verifier_set0 = vsss_rs::StdVsss::<G1Projective, [u8; 1], u8, InnerShare>::split_secret_with_blind_verifier(
-            2, 3, secrets[0], Some(blind_secrets[0]), None, None, &mut rng
-        ).unwrap();
+        let pedersen_verifier_set0 =
+            vsss_rs::StdVsss::<G1Projective, u8, InnerShare>::split_secret_with_blind_verifier(
+                2,
+                3,
+                secrets[0],
+                Some(blind_secrets[0]),
+                None,
+                None,
+                &mut rng,
+            )
+            .unwrap();
 
-        let pedersen_verifier_set1 = vsss_rs::StdVsss::<G1Projective, [u8; 1], u8, InnerShare>::split_secret_with_blind_verifier(
-            2, 3, secrets[1], Some(blind_secrets[1]), None, None, &mut rng
-        ).unwrap();
+        let pedersen_verifier_set1 =
+            vsss_rs::StdVsss::<G1Projective, u8, InnerShare>::split_secret_with_blind_verifier(
+                2,
+                3,
+                secrets[1],
+                Some(blind_secrets[1]),
+                None,
+                None,
+                &mut rng,
+            )
+            .unwrap();
 
-        let pedersen_verifier_set2 = vsss_rs::StdVsss::<G1Projective, [u8; 1], u8, InnerShare>::split_secret_with_blind_verifier(
-            2, 3, secrets[2], Some(blind_secrets[2]), None, None, &mut rng
-        ).unwrap();
+        let pedersen_verifier_set2 =
+            vsss_rs::StdVsss::<G1Projective, u8, InnerShare>::split_secret_with_blind_verifier(
+                2,
+                3,
+                secrets[2],
+                Some(blind_secrets[2]),
+                None,
+                None,
+                &mut rng,
+            )
+            .unwrap();
 
         let secret_shares0 = pedersen_verifier_set0.secret_shares();
         let blinder_shares0 = pedersen_verifier_set0.blinder_shares();

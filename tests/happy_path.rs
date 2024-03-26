@@ -201,7 +201,7 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
     assert!(participants[3].get_public_key().unwrap() == participants[4].get_public_key().unwrap());
     assert!(participants[4].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
 
-    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let secret = res.unwrap();
 
@@ -213,7 +213,7 @@ fn five_participants_init<G: Group + GroupEncoding + Default>(
     assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
     assert_eq!(r4bdata[&5].public_key, G::generator() * secret);
 
-    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4blind_shares);
+    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4blind_shares);
     assert!(res.is_ok());
 
     (participants, secret)
@@ -423,7 +423,7 @@ fn five_participants_add_participant<G: Group + GroupEncoding + Default>(thresho
         new_participants[1].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -550,7 +550,7 @@ fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(thre
 
     assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
 
-    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -741,7 +741,7 @@ fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncodin
         new_participants[0].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
@@ -944,7 +944,7 @@ fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncodin
         new_participants[2].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, [u8; 1], u8, InnerShare>(&r4shares);
+    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
