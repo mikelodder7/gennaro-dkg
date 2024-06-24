@@ -9,6 +9,8 @@
 
 The Gennaro Distributed Key Generation Algorithm as described [here](https://link.springer.com/content/pdf/10.1007/s00145-006-0347-3.pdf)
 
+This implementation also mitigates the [Rogue Key Attack](https://blog.sigmaprime.io/dkg-rogue-key.html).
+
 ## Security Notes
 
 This crate has received one security audit from Kudelski Security with no significant findings. The
@@ -27,9 +29,13 @@ Non-responsive participants are out of scope for this crate since this includes 
 which could be for a number of reasons: network latency, system crashes, etc. This is left to consumers
 as is handling the creation a secure channel to send data.
 
+Essentially communication channels are deliberately *not* part of this crate. The sending and receiving
+of messages needs to be handled by the consumer of this crate. This allows the protocol to be used in 
+both sync and async environments.
+
 A good description of methods to do this can be found [here](https://medium.com/zengo/mpc-over-signal-977db599de66).
 
-In a nut shell:
+In a nut-shell:
 
 1. Use Signal Protocol since this offers the highest security.
 2. Use the latest version of TLS if you can rely on and trust PKI.

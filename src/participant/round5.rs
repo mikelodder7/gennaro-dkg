@@ -1,66 +1,23 @@
 use super::*;
 
-impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
+impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
+    Participant<I, G>
+{
+    pub(crate) fn round5_ready(&self) -> bool {
+        self.round == Round::Five && self.received_round4_data.len() >= self.threshold
+    }
+
     /// Computes round 5 for this participant.
     ///
     /// Checks if all participants computed the same public key.
     ///
     /// Throws an error if this participant is not in round 5.
-    pub fn round5(
-        &self,
-        broadcast_data: &BTreeMap<usize, Round4EchoBroadcastData<G>>,
-    ) -> DkgResult<()> {
-        if !matches!(self.round, Round::Five) {
+    pub fn round5(&self) -> DkgResult<()> {
+        if !self.round5_ready() {
             return Err(Error::RoundError(
                 Round::Five.into(),
-                format!("Invalid Round, use round{}", self.round),
+                format!("round not ready, haven't received enough data from other participants. Need {} more", self.threshold - self.received_round4_data.len()),
             ));
-        }
-        if broadcast_data.is_empty() {
-            return Err(Error::RoundError(
-                Round::Five.into(),
-                "Missing broadcast data from other participants. Broadcast data is empty"
-                    .to_string(),
-            ));
-        }
-        if broadcast_data.len() < self.threshold {
-            return Err(Error::RoundError(
-                Round::Five.into(),
-                "Missing broadcast data from other participants. Non-sufficient data provided."
-                    .to_string(),
-            ));
-        }
-
-        for (id, bdata) in broadcast_data {
-            if self.id == *id {
-                continue;
-            }
-            if !self.valid_participant_ids.contains(id) {
-                continue;
-            }
-            if !self.round1_p2p_data.contains_key(id) {
-                // How would this happen?
-                // Round 2 removed all invalid participants
-                // Round 3 sent echo broadcast to double check valid participants
-                // Round 4 also removed all invalid participants
-                continue;
-            }
-            if !self.round1_broadcast_data.contains_key(id) {
-                // How would this happen?
-                // Round 2 removed all invalid participants
-                // Round 3 sent echo broadcast to double check valid participants
-                // Round 4 also removed all invalid participants
-                continue;
-            }
-            if bdata.public_key != self.public_key {
-                return Err(Error::RoundError(
-                    Round::Five.into(),
-                    format!(
-                        "Public key from secret_participant {} does not match.  Expected {:?}, found {:?}",
-                        id, self.public_key, bdata.public_key
-                    ),
-                ));
-            }
         }
 
         Ok(())

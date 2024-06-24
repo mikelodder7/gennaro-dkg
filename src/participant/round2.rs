@@ -1,150 +1,33 @@
 use super::*;
 
 impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
+    pub(crate) fn round2_ready(&self) -> bool {
+        self.round == Round::Two && self.received_round1_data.len() >= self.threshold
+    }
+
     /// Computes round2 for this participant.
-    ///
-    /// Inputs correspond to messages received from other participants
-    ///
-    /// The protocol will continue if some parties are malicious as
-    /// long as `threshold` or more participants are honest.
-    ///
-    /// Example: this participant is id = 1, others include 2, 3, 4
-    /// broadcast_data = {
-    ///     2: Round1BroadcastData, // from participant 2
-    ///     3: Round1BroadcastData, // from participant 3
-    ///     4: Round1BroadcastData, // from participant 4
-    /// }
-    ///
-    /// p2p_data = {
-    ///     2: Round1P2PData, // from participant 2
-    ///     3: Round1P2PData, // from participant 3
-    ///     4: Round1P2PData, // from participant 4
-    /// }
     ///
     /// Throws an error if this participant is not in round 2.
     ///
     /// Returns the data needed for round 2
-    pub fn round2(
-        &mut self,
-        broadcast_data: BTreeMap<usize, Round1BroadcastData<G>>,
-        p2p_data: BTreeMap<usize, Round1P2PData>,
-    ) -> DkgResult<Round2EchoBroadcastData> {
-        if !matches!(self.round, Round::Two) {
+    pub(crate) fn round2(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
+        if !self.round2_ready() {
             return Err(Error::RoundError(
                 Round::Two.into(),
-                format!("Invalid Round, use round{}", self.round),
+                format!("round not ready, haven't received enough data from other participants. Need {} more", self.threshold - self.received_round1_data.len()),
             ));
         }
 
-        if broadcast_data.is_empty() {
-            return Err(Error::RoundError(
-                Round::Two.into(),
-                "Missing broadcast data from other participants".to_string(),
-            ));
-        }
-        if p2p_data.is_empty() {
-            return Err(Error::RoundError(
-                Round::Two.into(),
-                "Missing peer-to-peer data from other participants".to_string(),
-            ));
-        }
-        // Allow -1 since including this participant
-        // This round doesn't expect this participant data included in the broadcast_data map
-        if broadcast_data.len() < self.threshold - 1 {
-            return Err(Error::RoundError(
-                Round::Two.into(),
-                format!(
-                    "Not enough secret_participant data. Expected {}, received {}",
-                    self.threshold,
-                    broadcast_data.len()
-                ),
-            ));
-        }
-        if p2p_data.len() < self.threshold - 1 {
-            return Err(Error::RoundError(
-                Round::Two.into(),
-                format!(
-                    "Not enough secret_participant data. Expected {}, received {}",
-                    self.threshold,
-                    broadcast_data.len()
-                ),
-            ));
-        }
+        let mut blind_key = G::identity();
+        let mut secret_share = G::Scalar::ZERO;
+        let mut blind_share = G::Scalar::ZERO;
+        let og_secret = self.secret_shares[self.ordinal].1;
+        let og_blind = self.blinder_shares[self.ordinal].1;
 
-        self.valid_participant_ids.clear();
-        let mut secret_share =
-            self.components.secret_shares[self.id - 1].as_field_element::<G::Scalar>()?;
-        let mut blind_share =
-            self.components.blinder_shares[self.id - 1].as_field_element::<G::Scalar>()?;
-        let mut blind_key = self.components.pedersen_verifier_set.blind_verifiers()[0];
-        let og_secret = secret_share;
-        let og_blind = blind_share;
-
-        // Create a unique list of secret_participant ids
-        let pids = broadcast_data
-            .keys()
-            .copied()
-            .chain(p2p_data.keys().copied())
-            .collect::<BTreeSet<usize>>();
-        for pid in &pids {
-            // resolve bid != pid where bid might exist or pid might exist in the other
-            // probably didn't receive the data, not necessarily malicious
-            let opt_bdata = broadcast_data.get(pid);
-            if opt_bdata.is_none() {
-                continue;
-            }
-            let opt_p2p_data = p2p_data.get(pid);
-            if opt_p2p_data.is_none() {
-                continue;
-            }
-
-            let bdata = opt_bdata.expect("to unwrap broadcast data");
-
-            // If not using the same generator then it's a problem
-            if bdata.blinder_generator != self.components.pedersen_verifier_set.blinder_generator()
-                || bdata.message_generator
-                    != self.components.pedersen_verifier_set.secret_generator()
-                || bdata.pedersen_commitments.len() != self.threshold
-            {
-                continue;
-            }
-
-            if bdata
-                .pedersen_commitments
-                .iter()
-                .any(|c| c.is_identity().into())
-            {
-                continue;
-            }
-            let p2p = opt_p2p_data.expect("to unwrap p2p_data");
-            let p2p_secret_share = &p2p.secret_share; //serde_bare::from_slice::<InnerShare>(&p2p.secret_share)
-                                                      // .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
-            let p2p_blind_share = &p2p.blind_share; // serde_bare::from_slice::<InnerShare>(&p2p.blind_share)
-                                                    // .map_err(|e| Error::RoundError(Round::Two.into(), e.to_string()))?;
-            if (p2p_secret_share.is_zero() | p2p_blind_share.is_zero()).into() {
-                continue;
-            }
-
-            let verifier = Vec::<G>::pedersen_set_with_generators_and_verifiers(
-                bdata.message_generator,
-                bdata.blinder_generator,
-                &bdata.pedersen_commitments,
-            );
-
-            if verifier
-                .verify_share_and_blinder(p2p_secret_share, p2p_blind_share)
-                .is_err()
-            {
-                continue;
-            }
-            if let Ok(s) = p2p_secret_share.as_field_element::<G::Scalar>() {
-                secret_share += s;
-                self.valid_participant_ids.insert(*pid);
-            }
-            if let Ok(b) = p2p_blind_share.as_field_element::<G::Scalar>() {
-                blind_share += b;
-            }
-            blind_key += bdata.pedersen_commitments[0];
+        for data in self.received_round1_data.values() {
+            blind_key += data.pedersen_commitments[0];
+            secret_share += data.secret_share;
+            blind_share += data.blind_share;
         }
 
         if secret_share.is_zero().into() || secret_share == og_secret {
@@ -159,34 +42,75 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
                 "The resulting blind key share is invalid".to_string(),
             ));
         }
-        self.valid_participant_ids.insert(self.id);
         if self.valid_participant_ids.len() < self.threshold {
             return Err(Error::RoundError(
                 Round::Two.into(),
                 "Not enough valid participants, below the threshold".to_string(),
             ));
         }
+        for data in self.received_round1_data.values() {
+            data.add_to_transcript(&mut self.transcript);
+        }
 
         self.round = Round::Three;
-        // Include own id in valid set
-        self.round1_p2p_data = p2p_data
-            .iter()
-            .map(|(key, value)| {
-                let val = Arc::new(Mutex::new(
-                    Protected::serde(value).expect("to unwrap protected"),
-                ));
-                (*key, val)
-            })
-            .collect();
-        self.round1_broadcast_data = broadcast_data;
-
-        let echo_data = Round2EchoBroadcastData {
-            valid_participant_ids: self.valid_participant_ids.clone(),
-        };
-        self.secret_share = Arc::new(Mutex::new(Protected::field_element(secret_share)));
-        self.blind_share = Arc::new(Mutex::new(Protected::field_element(blind_share)));
+        self.secret_share = secret_share;
+        self.blind_share = blind_share;
         self.blind_key = blind_key;
+        self.received_round2_data.insert(
+            self.ordinal,
+            Round2Data {
+                sender_ordinal: self.ordinal,
+                sender_id: self.id,
+                valid_participant_ids: self.valid_participant_ids.clone(),
+            },
+        );
 
-        Ok(echo_data)
+        Ok(RoundOutputGenerator::Round2(Round2OutputGenerator {
+            participant_ids: self.all_participant_ids.clone(),
+            sender_ordinal: self.ordinal,
+            sender_id: self.id,
+            valid_participant_ids: self.valid_participant_ids.clone(),
+        }))
+    }
+
+    pub(crate) fn receive_round2data(&mut self, data: Round2Data<G>) -> DkgResult<()> {
+        if self.round != Round::Three {
+            return Err(Error::RoundError(
+                3,
+                "Invalid round payload received".to_string(),
+            ));
+        }
+        if self.received_round2_data.contains_key(&data.sender_ordinal) {
+            return Err(Error::RoundError(
+                2,
+                "Sender has already sent data".to_string(),
+            ));
+        }
+        self.check_sending_participant_id(2, data.sender_ordinal, data.sender_id)?;
+        if data.valid_participant_ids.len() < self.threshold {
+            return Err(Error::RoundError(
+                2,
+                "Valid participant ids length is less than threshold".to_string(),
+            ));
+        }
+        if !data
+            .valid_participant_ids
+            .iter()
+            .all(|(k, v)| self.all_participant_ids.contains_key(k) && bool::from(!v.is_zero()))
+        {
+            return Err(Error::RoundError(
+                2,
+                "Invalid valid participant ids".to_string(),
+            ));
+        }
+        if self.valid_participant_ids != data.valid_participant_ids {
+            return Err(Error::RoundError(
+                2,
+                "Valid participant ids do not match".to_string(),
+            ));
+        }
+        self.received_round2_data
+            .insert(data.sender_ordinal, data.clone());
+        Ok(())
     }
 }
