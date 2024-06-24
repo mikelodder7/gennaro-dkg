@@ -23,7 +23,7 @@
 //!
 //! ```
 //! use gennaro_dkg::*;
-//! use k256::{ProjectivePoint, Scalar};
+//! use tk256::{ProjectivePoint, Scalar};
 //! use maplit::btreemap;
 //! use std::{
 //!     collections::BTreeMap,
@@ -206,19 +206,8 @@ mod traits;
 mod utils;
 
 use elliptic_curve::{group::GroupEncoding, Group, PrimeField};
-use rand_core::SeedableRng;
-use serde::{
-    de::{Error as DError, SeqAccess, Visitor},
-    ser::{SerializeSeq, SerializeTuple},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
-use std::{
-    collections::BTreeSet,
-    fmt::{self, Display, Formatter},
-    marker::PhantomData,
-    num::NonZeroUsize,
-};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use serde::{Deserialize, Serialize};
+use std::num::NonZeroUsize;
 
 pub use data::*;
 pub use error::*;
@@ -235,12 +224,12 @@ mod tests {
 
     #[test]
     fn one_corrupted_party_k256() {
-        one_corrupted_party::<k256::ProjectivePoint>()
+        one_corrupted_party::<tk256::ProjectivePoint>()
     }
 
     #[test]
     fn one_corrupted_party_p256() {
-        one_corrupted_party::<p256::ProjectivePoint>()
+        one_corrupted_party::<tp256::ProjectivePoint>()
     }
 
     #[test]
@@ -356,12 +345,12 @@ mod tests {
 
     #[test]
     fn serialization_k256() {
-        serialization_curve::<k256::ProjectivePoint>();
+        serialization_curve::<tk256::ProjectivePoint>();
     }
 
     #[test]
     fn serialization_p256() {
-        serialization_curve::<p256::ProjectivePoint>();
+        serialization_curve::<tp256::ProjectivePoint>();
     }
 
     #[test]

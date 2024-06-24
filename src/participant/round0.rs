@@ -5,7 +5,7 @@ use crate::{
 use elliptic_curve::group::GroupEncoding;
 use vsss_rs::CtIsZero;
 
-impl<I: ParticipantImpl<G>, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
+impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
     Participant<I, G>
 {
     pub(crate) fn round0(&mut self) -> DkgResult<RoundOutputGenerator<G>> {

@@ -190,7 +190,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 let round3_output_data = Round3Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
-                    feldman_commitments,
+                    feldman_commitments: data.feldman_commitments.clone(),
                 };
                 let mut output =
                     postcard::to_stdvec(&round3_output_data).expect("to serialize into a bytes");
@@ -328,7 +328,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round0Data<G> {
     /// Add the payload to the transcript
     pub fn add_to_transcript(&self, transcript: &mut Transcript) {
         transcript.append_u64(b"sender ordinal", self.sender_ordinal as u64);
-        transcript.append_message(b"sender id", self.sender_id);
+        transcript.append_message(b"sender id", self.sender_id.to_repr().as_ref());
         transcript.append_u64(b"sender type", self.sender_type as u64);
         transcript.append_message(b"pedersen commitment hash", &self.pedersen_commitment_hash);
         transcript.append_message(b"feldman commitment hash", &self.feldman_commitment_hash);
@@ -396,6 +396,7 @@ pub struct Round2Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     #[serde(with = "prime_field")]
     pub(crate) sender_id: G::Scalar,
     /// The list of remaining valid participant IDs
+    #[serde(with = "prime_field_map")]
     pub(crate) valid_participant_ids: BTreeMap<usize, G::Scalar>,
 }
 

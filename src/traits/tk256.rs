@@ -1,5 +1,6 @@
 use crate::traits::*;
 use elliptic_curve::{
+    bigint::U512,
     hash2curve::{ExpandMsgXmd, GroupDigest},
     ops::Reduce,
 };
@@ -30,6 +31,6 @@ impl AsLimbs<4> for Scalar {
 impl ReduceWide<64> for Scalar {
     fn reduce_wide(okm: &[u8; 64]) -> Self {
         let bytes = WideBytes::from_slice(okm);
-        Scalar::reduce_bytes(bytes)
+        <Scalar as Reduce<U512>>::reduce_bytes(bytes)
     }
 }
