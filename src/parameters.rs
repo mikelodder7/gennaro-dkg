@@ -1,4 +1,5 @@
 use super::*;
+use crate::serdes::*;
 
 use vsss_rs::{ParticipantNumberGenerator, SequentialParticipantNumberGenerator};
 
@@ -12,9 +13,9 @@ pub struct Parameters<
 > {
     pub(crate) threshold: usize,
     pub(crate) limit: usize,
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
+    #[serde(with = "group")]
     pub(crate) message_generator: G,
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
+    #[serde(with = "group")]
     pub(crate) blinder_generator: G,
     pub(crate) participant_number_generator: P,
 }

@@ -1,16 +1,15 @@
-mod bls;
+mod tbls;
 #[cfg(feature = "curve25519")]
-pub mod ed25519;
+pub mod ted25519;
 #[cfg(feature = "ed448")]
-pub mod ed448;
+pub mod ted448;
 #[cfg(feature = "k256")]
-pub mod k256;
+pub mod tk256;
 #[cfg(feature = "p256")]
-pub mod p256;
+pub mod tp256;
 #[cfg(feature = "p384")]
-pub mod p384;
+pub mod tp384;
 
-use elliptic_curve::subtle::Choice;
 use elliptic_curve::{CurveArithmetic, Group, PrimeField, ScalarPrimitive};
 
 /// A trait for a group that use a hash function to create a group element from

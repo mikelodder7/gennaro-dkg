@@ -89,13 +89,13 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
             ));
         }
 
-        let participant_type = self.received_round0_data[data.sender_ordinal].sender_type;
+        let participant_type = self.received_round0_data[&data.sender_ordinal].sender_type;
         let feldman_valid = match participant_type {
             ParticipantType::Secret => {
-                SecretParticipantImpl::check_feldman_verifier(&data.feldman_commitments[0])
+                SecretParticipantImpl::check_feldman_verifier(data.feldman_commitments[0])
             }
             ParticipantType::Refresh => {
-                RefreshParticipantImpl::check_feldman_verifier(&data.feldman_commitments[0])
+                RefreshParticipantImpl::check_feldman_verifier(data.feldman_commitments[0])
             }
         };
         if !feldman_valid {
@@ -113,9 +113,8 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
             &data.feldman_commitments,
         );
 
-        if !commitment_hash
-            .ct_eq(&self.received_round0_data[&data.sender_ordinal].pedersen_commitment_hash)
-            .into()
+        if commitment_hash
+            == self.received_round0_data[&data.sender_ordinal].pedersen_commitment_hash
         {
             return Err(Error::RoundError(
                 1,

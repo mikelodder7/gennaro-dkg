@@ -5,8 +5,7 @@ pub(crate) mod prime_field {
         ser::SerializeTuple,
         Deserializer, Serializer,
     };
-    use std::fmt;
-    use std::fmt::Formatter;
+    use std::fmt::{self, Formatter};
     use std::marker::PhantomData;
 
     pub fn serialize<F: PrimeField, S: Serializer>(scalar: &F, s: S) -> Result<S::Ok, S::Error> {
@@ -70,6 +69,129 @@ pub(crate) mod prime_field {
             d.deserialize_str(vis)
         } else {
             d.deserialize_bytes(vis)
+        }
+    }
+}
+
+pub(crate) mod prime_field_map {
+    use elliptic_curve::PrimeField;
+    use serde::{
+        de::{Error as DError, Visitor},
+        ser::SerializeMap,
+        Deserialize, Deserializer, Serialize, Serializer,
+    };
+    use std::{
+        collections::BTreeMap,
+        fmt::{self, Formatter},
+    };
+
+    pub fn serialize<F: PrimeField, S: Serializer>(
+        bmap: &BTreeMap<usize, F>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        let is_human_readable = s.is_human_readable();
+        let mut map = s.serialize_map(Some(bmap.len()))?;
+        for (k, v) in bmap {
+            map.serialize_key(k)?;
+            let vv = v.to_repr();
+            let rr = vv.as_ref();
+            if is_human_readable {
+                map.serialize_value(&data_encoding::BASE64URL_NOPAD.encode(rr))?;
+            } else {
+                map.serialize_value(rr)?;
+            }
+        }
+        map.end()
+    }
+
+    pub fn deserialize<'de, F: PrimeField, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<usize, F>, D::Error> {
+        if d.is_human_readable() {
+            struct MapVisitor<F: PrimeField> {
+                marker: std::marker::PhantomData<F>,
+            }
+
+            impl<'de, F: PrimeField> Visitor<'de> for MapVisitor<F> {
+                type Value = BTreeMap<usize, F>;
+
+                fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+                    write!(f, "a map of integers to strings")
+                }
+
+                fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                where
+                    A: serde::de::MapAccess<'de>,
+                {
+                    let mut bmap = BTreeMap::new();
+                    while let Some((k, v)) = map.next_entry::<usize, String>()? {
+                        let bytes = data_encoding::BASE64URL_NOPAD
+                            .decode(v.as_bytes())
+                            .map_err(|_| {
+                                DError::custom("unable to decode string to bytes".to_string())
+                            })?;
+                        let mut repr = F::default().to_repr();
+                        let len = repr.as_ref().len();
+                        if bytes.len() != len {
+                            return Err(DError::custom(format!(
+                                "invalid length, expected: {}, actual: {}",
+                                len,
+                                bytes.len()
+                            )));
+                        }
+                        repr.as_mut().copy_from_slice(bytes.as_slice());
+                        let pt = Option::<F>::from(F::from_repr(repr))
+                            .ok_or(DError::custom("unable to convert to scalar".to_string()))?;
+                        bmap.insert(k, pt);
+                    }
+                    Ok(bmap)
+                }
+            }
+
+            let visitor = MapVisitor {
+                marker: std::marker::PhantomData::<F>,
+            };
+            d.deserialize_map(visitor)
+        } else {
+            struct MapVisitor<F: PrimeField> {
+                marker: std::marker::PhantomData<F>,
+            }
+
+            impl<'de, F: PrimeField> Visitor<'de> for MapVisitor<F> {
+                type Value = BTreeMap<usize, F>;
+
+                fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+                    write!(f, "a map of integers to byte sequences")
+                }
+
+                fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                where
+                    A: serde::de::MapAccess<'de>,
+                {
+                    let mut bmap = BTreeMap::new();
+                    while let Some((k, v)) = map.next_entry::<usize, &[u8]>()? {
+                        let mut repr = F::default().to_repr();
+                        let len = repr.as_ref().len();
+                        if v.len() != len {
+                            return Err(DError::custom(format!(
+                                "invalid length, expected: {}, actual: {}",
+                                len,
+                                v.len()
+                            )));
+                        }
+                        repr.as_mut().copy_from_slice(v);
+                        let pt = Option::<F>::from(F::from_repr(repr))
+                            .ok_or(DError::custom("unable to convert to scalar".to_string()))?;
+                        bmap.insert(k, pt);
+                    }
+                    Ok(bmap)
+                }
+            }
+
+            let visitor = MapVisitor {
+                marker: std::marker::PhantomData::<F>,
+            };
+            d.deserialize_map(visitor)
         }
     }
 }

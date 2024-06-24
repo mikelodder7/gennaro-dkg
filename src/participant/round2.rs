@@ -1,6 +1,8 @@
 use super::*;
 
-impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
+impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
+    Participant<I, G>
+{
     pub(crate) fn round2_ready(&self) -> bool {
         self.round == Round::Two && self.received_round1_data.len() >= self.threshold
     }

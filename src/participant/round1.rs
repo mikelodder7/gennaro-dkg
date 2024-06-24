@@ -1,6 +1,8 @@
 use super::*;
 
-impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Participant<I, G> {
+impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
+    Participant<I, G>
+{
     pub fn round1_ready(&self) -> bool {
         self.round == Round::One && self.received_round0_data.len() >= self.threshold
     }
@@ -119,7 +121,7 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             ));
         }
 
-        let participant_type = self.received_round0_data[data.sender_ordinal].sender_type;
+        let participant_type = self.received_round0_data[&data.sender_ordinal].sender_type;
         let commitment_hash = Self::compute_pedersen_commitments_hash(
             participant_type,
             data.sender_ordinal,
@@ -127,9 +129,8 @@ impl<I: ParticipantImpl<G> + Default, G: Group + GroupEncoding + Default> Partic
             self.threshold,
             &data.pedersen_commitments,
         );
-        if !commitment_hash
-            .ct_eq(&self.received_round0_data[&data.sender_ordinal].pedersen_commitment_hash)
-            .into()
+        if commitment_hash
+            == self.received_round0_data[&data.sender_ordinal].pedersen_commitment_hash
         {
             return Err(Error::RoundError(
                 1,

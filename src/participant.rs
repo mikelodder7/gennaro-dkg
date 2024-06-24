@@ -142,7 +142,7 @@ where
         Self::initialize(id, parameters, secret, blinder)
     }
 
-    fn initialize<P: ParticipantNumberGenerator<G::Scalar>>(
+    fn initialize<P: ParticipantNumberGenerator<G::Scalar> + Default>(
         id: G::Scalar,
         parameters: &Parameters<G, P>,
         secret: G::Scalar,
