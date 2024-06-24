@@ -196,16 +196,19 @@
 pub use rand_core;
 pub use vsss_rs;
 
+mod consts;
+mod data;
 mod error;
 mod parameters;
 mod participant;
-mod pedersen_result;
-mod protected;
-mod secret_share;
+mod serdes;
+mod traits;
+mod utils;
 
+use elliptic_curve::{group::GroupEncoding, Group, PrimeField};
 use rand_core::SeedableRng;
 use serde::{
-    de::{Error as DError, SeqAccess, Unexpected, Visitor},
+    de::{Error as DError, SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeTuple},
     Deserialize, Deserializer, Serialize, Serializer,
 };
@@ -215,408 +218,20 @@ use std::{
     marker::PhantomData,
     num::NonZeroUsize,
 };
-use uint_zigzag::Uint;
-use vsss_rs::elliptic_curve::{group::GroupEncoding, Group, PrimeField};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+pub use data::*;
 pub use error::*;
 pub use parameters::*;
 pub use participant::*;
-pub use pedersen_result::*;
-
-/// Valid rounds
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Round {
-    /// First round
-    One,
-    /// Second round
-    Two,
-    /// Third round
-    Three,
-    /// Four round
-    Four,
-    /// Five round
-    Five,
-}
-
-impl Display for Round {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::One => write!(f, "1"),
-            Self::Two => write!(f, "2"),
-            Self::Three => write!(f, "3"),
-            Self::Four => write!(f, "4"),
-            Self::Five => write!(f, "5"),
-        }
-    }
-}
-
-macro_rules! impl_round_to_int {
-    ($($ident:ident),+$(,)*) => {
-        $(
-            impl From<Round> for $ident {
-                fn from(value: Round) -> Self {
-                    match value {
-                        Round::One => 1,
-                        Round::Two => 2,
-                        Round::Three => 3,
-                        Round::Four => 4,
-                        Round::Five => 5,
-                    }
-                }
-            }
-        )+
-    };
-}
-
-impl_round_to_int!(u8, u16, u32, u128, usize);
-
-/// Broadcast data from round 1 that should be sent to all other participants
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
-    /// The message generator
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    pub message_generator: G,
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    /// The blinder generator
-    pub blinder_generator: G,
-    #[serde(
-        serialize_with = "serialize_g_vec",
-        deserialize_with = "deserialize_g_vec"
-    )]
-    /// The Pedersen commitments
-    pub pedersen_commitments: Vec<G>,
-}
-
-#[cfg(test)]
-impl<G: Group + GroupEncoding + Default> serde_encrypt::traits::SerdeEncryptSharedKey
-    for Round1BroadcastData<G>
-{
-    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
-}
-
-/// Echo broadcast data from round 2 that should be sent to all valid participants
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Round2EchoBroadcastData {
-    /// The current valid participant ids
-    pub valid_participant_ids: BTreeSet<usize>,
-}
-
-#[cfg(test)]
-impl serde_encrypt::traits::SerdeEncryptSharedKey for Round1P2PData {
-    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
-}
-
-/// Broadcast data from round 3 that should be sent to all valid participants
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
-    /// The feldman commitments
-    #[serde(
-        serialize_with = "serialize_g_vec",
-        deserialize_with = "deserialize_g_vec"
-    )]
-    pub commitments: Vec<G>,
-}
-
-/// Echo broadcast data from round 4 that should be sent to all valid participants
-#[derive(Copy, Debug, Clone, Serialize, Deserialize)]
-pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
-    /// The computed public key
-    #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    pub public_key: G,
-}
-
-/// Peer data from round 1 that should only be sent to a specific secret_participant
-#[derive(Clone, Debug, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
-pub struct Round1P2PData {
-    /// The secret share
-    pub secret_share: Vec<u8>,
-    /// The blind share
-    pub blind_share: Vec<u8>,
-}
-
-pub(crate) fn serialize_scalar<F: PrimeField, S: Serializer>(
-    scalar: &F,
-    s: S,
-) -> Result<S::Ok, S::Error> {
-    let v = scalar.to_repr();
-    let vv = v.as_ref();
-    if s.is_human_readable() {
-        s.serialize_str(&data_encoding::BASE64URL_NOPAD.encode(vv))
-    } else {
-        let len = vv.len();
-        let mut t = s.serialize_tuple(len)?;
-        for vi in vv {
-            t.serialize_element(vi)?;
-        }
-        t.end()
-    }
-}
-
-pub(crate) fn deserialize_scalar<'de, F: PrimeField, D: Deserializer<'de>>(
-    d: D,
-) -> Result<F, D::Error> {
-    struct ScalarVisitor<F: PrimeField> {
-        marker: PhantomData<F>,
-    }
-
-    impl<'de, F: PrimeField> Visitor<'de> for ScalarVisitor<F> {
-        type Value = F;
-
-        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-            write!(f, "a byte sequence")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: DError,
-        {
-            let bytes = data_encoding::BASE64URL_NOPAD
-                .decode(v.as_bytes())
-                .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
-            let mut repr = F::default().to_repr();
-            repr.as_mut().copy_from_slice(bytes.as_slice());
-            let sc = F::from_repr(repr);
-            if sc.is_some().into() {
-                Ok(sc.unwrap())
-            } else {
-                Err(DError::custom("unable to convert to scalar".to_string()))
-            }
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut repr = F::default().to_repr();
-            let mut i = 0;
-            let len = repr.as_ref().len();
-            while let Some(b) = seq.next_element()? {
-                repr.as_mut()[i] = b;
-                i += 1;
-                if i == len {
-                    let sc = F::from_repr(repr);
-                    if sc.is_some().into() {
-                        return Ok(sc.unwrap());
-                    }
-                }
-            }
-            Err(DError::custom("unable to convert to scalar".to_string()))
-        }
-    }
-
-    let vis = ScalarVisitor {
-        marker: PhantomData::<F>,
-    };
-    if d.is_human_readable() {
-        d.deserialize_str(vis)
-    } else {
-        let repr = F::default().to_repr();
-        let len = repr.as_ref().len();
-        d.deserialize_tuple(len, vis)
-    }
-}
-
-pub(crate) fn serialize_g<G: Group + GroupEncoding + Default, S: Serializer>(
-    g: &G,
-    s: S,
-) -> Result<S::Ok, S::Error> {
-    let v = g.to_bytes();
-    let vv = v.as_ref();
-    if s.is_human_readable() {
-        s.serialize_str(&data_encoding::BASE64URL_NOPAD.encode(vv))
-    } else {
-        let mut t = s.serialize_tuple(vv.len())?;
-        for b in vv {
-            t.serialize_element(b)?;
-        }
-        t.end()
-    }
-}
-
-pub(crate) fn deserialize_g<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
-    d: D,
-) -> Result<G, D::Error> {
-    struct GVisitor<G: Group + GroupEncoding + Default> {
-        marker: PhantomData<G>,
-    }
-
-    impl<'de, G: Group + GroupEncoding + Default> Visitor<'de> for GVisitor<G> {
-        type Value = G;
-
-        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-            write!(f, "a base64 encoded string or tuple of bytes")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: DError,
-        {
-            let mut repr = G::Repr::default();
-            let bytes = data_encoding::BASE64URL_NOPAD
-                .decode(v.as_bytes())
-                .map_err(|_| DError::invalid_value(Unexpected::Str(v), &self))?;
-            repr.as_mut().copy_from_slice(bytes.as_slice());
-            let res = G::from_bytes(&repr);
-            if res.is_some().unwrap_u8() == 1u8 {
-                Ok(res.unwrap())
-            } else {
-                Err(DError::invalid_value(Unexpected::Str(v), &self))
-            }
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut repr = G::Repr::default();
-            let input = repr.as_mut();
-            for i in 0..input.len() {
-                input[i] = seq
-                    .next_element()?
-                    .ok_or_else(|| DError::invalid_length(input.len(), &self))?;
-            }
-            let res = G::from_bytes(&repr);
-            if res.is_some().unwrap_u8() == 1u8 {
-                Ok(res.unwrap())
-            } else {
-                Err(DError::invalid_value(Unexpected::Seq, &self))
-            }
-        }
-    }
-
-    let visitor = GVisitor {
-        marker: PhantomData,
-    };
-    if d.is_human_readable() {
-        d.deserialize_str(visitor)
-    } else {
-        let repr = G::Repr::default();
-        d.deserialize_tuple(repr.as_ref().len(), visitor)
-    }
-}
-
-pub(crate) fn serialize_g_vec<G: Group + GroupEncoding + Default, S: Serializer>(
-    g: &Vec<G>,
-    s: S,
-) -> Result<S::Ok, S::Error> {
-    let v = g.iter().map(|p| p.to_bytes()).collect::<Vec<G::Repr>>();
-    if s.is_human_readable() {
-        let vv = v
-            .iter()
-            .map(|b| data_encoding::BASE64URL_NOPAD.encode(b.as_ref()))
-            .collect::<Vec<String>>();
-        vv.serialize(s)
-    } else {
-        let size = G::Repr::default().as_ref().len();
-        let uint = Uint::from(g.len());
-        let length_bytes = uint.to_vec();
-        let mut seq = s.serialize_seq(Some(length_bytes.len() + size * g.len()))?;
-        for b in &length_bytes {
-            seq.serialize_element(b)?;
-        }
-        for c in &v {
-            for b in c.as_ref() {
-                seq.serialize_element(b)?;
-            }
-        }
-        seq.end()
-    }
-}
-
-pub(crate) fn deserialize_g_vec<'de, G: Group + GroupEncoding + Default, D: Deserializer<'de>>(
-    d: D,
-) -> Result<Vec<G>, D::Error> {
-    struct NonReadableVisitor<G: Group + GroupEncoding + Default> {
-        marker: PhantomData<G>,
-    }
-
-    impl<'de, G: Group + GroupEncoding + Default> Visitor<'de> for NonReadableVisitor<G> {
-        type Value = Vec<G>;
-
-        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-            write!(f, "an array of bytes")
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut buffer = [0u8; Uint::MAX_BYTES];
-            let mut i = 0;
-            while let Some(b) = seq.next_element()? {
-                buffer[i] = b;
-                i += 1;
-                if i == Uint::MAX_BYTES {
-                    break;
-                }
-            }
-            let bytes_cnt_size = Uint::peek(&buffer)
-                .ok_or_else(|| DError::invalid_value(Unexpected::Bytes(&buffer), &self))?;
-            let points = Uint::try_from(&buffer[..bytes_cnt_size])
-                .map_err(|_| DError::invalid_value(Unexpected::Bytes(&buffer), &self))?;
-
-            i = Uint::MAX_BYTES - bytes_cnt_size;
-            let mut repr = G::Repr::default();
-            {
-                let r = repr.as_mut();
-                r[..i].copy_from_slice(&buffer[bytes_cnt_size..]);
-            }
-            let repr_len = repr.as_ref().len();
-            let mut out = Vec::with_capacity(points.0 as usize);
-            while let Some(b) = seq.next_element()? {
-                repr.as_mut()[i] = b;
-                i += 1;
-                if i == repr_len {
-                    i = 0;
-                    let pt = G::from_bytes(&repr);
-                    if pt.is_none().unwrap_u8() == 1u8 {
-                        return Err(DError::invalid_value(Unexpected::Bytes(&buffer), &self));
-                    }
-                    out.push(pt.unwrap());
-                    if out.len() == points.0 as usize {
-                        break;
-                    }
-                }
-            }
-            if out.len() != points.0 as usize {
-                return Err(DError::invalid_length(out.len(), &self));
-            }
-            Ok(out)
-        }
-    }
-
-    if d.is_human_readable() {
-        let s = Vec::<String>::deserialize(d)?;
-        let mut out = Vec::with_capacity(s.len());
-        for si in &s {
-            let mut repr = G::Repr::default();
-            let bytes = data_encoding::BASE64URL_NOPAD
-                .decode(si.as_bytes())
-                .map_err(|_| DError::custom("unable to decode string to bytes".to_string()))?;
-            repr.as_mut().copy_from_slice(bytes.as_slice());
-            let pt = G::from_bytes(&repr);
-            if pt.is_none().unwrap_u8() == 1u8 {
-                return Err(DError::custom(
-                    "unable to convert string to point".to_string(),
-                ));
-            }
-            out.push(pt.unwrap());
-        }
-        Ok(out)
-    } else {
-        d.deserialize_seq(NonReadableVisitor {
-            marker: PhantomData,
-        })
-    }
-}
+pub use traits::*;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_encrypt::traits::SerdeEncryptSharedKey;
     use std::collections::BTreeMap;
-    use vsss_rs::{combine_shares, Share};
+    use vsss_rs::{combine_shares, SequentialParticipantNumberGenerator, Share};
 
     #[test]
     fn one_corrupted_party_k256() {
@@ -640,14 +255,16 @@ mod tests {
         one_corrupted_party::<blsful::inner_types::G2Projective>();
     }
 
-    fn one_corrupted_party<G: Group + GroupEncoding + Default>() {
+    fn one_corrupted_party<G: GroupHasher + GroupEncoding + Default>() {
         const THRESHOLD: usize = 2;
         const LIMIT: usize = 4;
         const BAD_ID: usize = 4;
 
         let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
         let limit = NonZeroUsize::new(LIMIT).unwrap();
-        let parameters = Parameters::<G>::new(threshold, limit);
+        let parameters = Parameters::<G, SequentialParticipantNumberGenerator<G::Scalar>>::new(
+            threshold, limit, None, None, None,
+        );
         let mut participants = [
             SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
             SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),

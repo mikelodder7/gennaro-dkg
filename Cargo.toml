@@ -10,32 +10,47 @@ license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
 repository = "https://github.com/mikelodder7/gennaro-dkg"
-version = "0.9.0-rc2"
+version = "1.0.0-pre.0"
 
 [features]
-default = ["curve25519"]
-curve25519 = ["vsss-rs/curve25519"]
-
+default = ["bls", "curve25519", "ed448", "k256", "p256", "p384"]
+bls = ["blsful", "sha2"]
+curve25519 = ["vsss-rs/curve25519", "sha2", "curve25519-dalek-ml"]
+ed448 = ["ed448-goldilocks-plus", "sha3"]
+k256 = ["dep:k256", "sha2"]
+p256 = ["dep:p256", "sha2"]
+p384 = ["dep:p384", "sha2"]
 
 [dependencies]
 anyhow = "1.0"
+elliptic-curve = { version = "0.13", features = ["hash2curve"] }
 data-encoding = "2.5"
+merlin = "3"
 rand_core = { version = "0.6", features = ["std"] }
 rand_chacha = "0.3"
 thiserror = "1.0"
 serde = "1.0"
-serde_bare = "0.5"
-soteria-rs = { version = "0.3", features = ["serde", "elements"] }
-uint-zigzag = { version = "0.2.1", features = ["std"] }
-vsss-rs = { version = "4.3.8", default-features = false, features = ["std"] }
+postcard = { version = "1.0", features = ["use-std"]}
+vsss-rs = { version = "4.3.1", default-features = false, features = ["std"] }
 zeroize = "1"
+
+blsful = { version = "2.5", optional = true }
+curve25519-dalek-ml = { version = "4.2.1", optional = true }
+ed448-goldilocks-plus = { version = "0.11", optional = true }
+k256 = { version = "0.13", features = ["arithmetic", "hash2curve"], optional = true }
+p256 = { version = "0.13", features = ["arithmetic", "hash2curve"], optional = true }
+p384 = { version = "0.13", features = ["arithmetic", "hash2curve"], optional = true }
+sha2 = { version = "0.10", optional = true }
+sha3 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 blsful = "2.5"
+ed448-goldilocks-plus = "0.11"
 k256 = "0.13"
 p256 = "0.13"
+p384 = "0.13"
 maplit = "1.0"
-rstest = "0.18"
+rstest = "0.21"
 serde_bare = "0.5"
 serde-encrypt = "0.7"
 serde_json = "1.0"
