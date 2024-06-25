@@ -1,3 +1,4 @@
+//! Traits for the P-256 curve.
 use crate::traits::*;
 use elliptic_curve::{
     bigint::{NonZero, U512},

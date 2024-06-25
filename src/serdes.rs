@@ -2,7 +2,6 @@ pub(crate) mod prime_field {
     use blsful::inner_types::PrimeField;
     use serde::{
         de::{Error as DError, Unexpected, Visitor},
-        ser::SerializeTuple,
         Deserializer, Serializer,
     };
     use std::fmt::{self, Formatter};
@@ -78,7 +77,7 @@ pub(crate) mod prime_field_map {
     use serde::{
         de::{Error as DError, Visitor},
         ser::SerializeMap,
-        Deserialize, Deserializer, Serialize, Serializer,
+        Deserializer, Serializer,
     };
     use std::{
         collections::BTreeMap,

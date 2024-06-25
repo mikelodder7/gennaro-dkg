@@ -1,3 +1,4 @@
+//! Traits for the ed448 curve.
 use crate::traits::*;
 use ed448_goldilocks_plus::{EdwardsPoint, Scalar, WideScalarBytes};
 

@@ -13,6 +13,7 @@ pub enum Error {
     /// Verifiable secret sharing scheme errors
     #[error("vsss error")]
     VsssError(vsss_rs::Error),
+    /// Postcard errors
     #[error("Postcard error: {0}")]
     PostcardError(#[from] postcard::Error),
     /// Errors during secret_participant initialization

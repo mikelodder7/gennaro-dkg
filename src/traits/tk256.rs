@@ -1,3 +1,4 @@
+//! Traits for the secp256k1 curve.
 use crate::traits::*;
 use elliptic_curve::{
     bigint::U512,
