@@ -77,10 +77,13 @@ macro_rules! impl_round_to_int {
 
 impl_round_to_int!(u8, u16, u32, u128, usize);
 
+/// The participant type
 #[derive(Debug, Copy, Clone, Default, Deserialize, Serialize)]
 pub enum ParticipantType {
+    /// Secret participant
     #[default]
     Secret,
+    /// Refresh participant
     Refresh,
 }
 
@@ -127,6 +130,8 @@ pub enum RoundOutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + D
     Round3(Round3OutputGenerator<G>),
     /// Round 4 output generator
     Round4(Round4OutputGenerator<G>),
+    /// The public key
+    Round5(G),
 }
 
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenerator<G> {
@@ -136,7 +141,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
     pub fn iter(&self) -> Box<dyn Iterator<Item = (usize, G::Scalar, Vec<u8>)> + '_> {
         match self {
             Self::Round0(data) => {
-                let round0_output_data = Round0Data {
+                let round0_output_data: Round0Data<G> = Round0Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     sender_type: ParticipantType::Secret,
@@ -149,11 +154,11 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 Box::new(
                     data.participant_ids
                         .iter()
-                        .map(|(index, id)| (*index, *id, output.clone())),
+                        .map(move |(index, id)| (*index, *id, output.clone())),
                 )
             }
             Self::Round1(data) => {
-                let mut round1_output_data = Round1Data {
+                let mut round1_output_data: Round1Data<G> = Round1Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     message_generator: data.message_generator,
@@ -162,7 +167,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     secret_share: G::Scalar::ZERO,
                     blind_share: G::Scalar::ZERO,
                 };
-                Box::new(data.participant_ids.iter().map(|(index, id)| {
+                Box::new(data.participant_ids.iter().map(move |(index, id)| {
                     round1_output_data.secret_share = data.secret_share[index];
                     round1_output_data.blind_share = data.blind_share[index];
                     let mut output = postcard::to_stdvec(&round1_output_data)
@@ -172,7 +177,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 }))
             }
             Self::Round2(data) => {
-                let round2_output_data = Round2Data {
+                let round2_output_data: Round2Data<G> = Round2Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     valid_participant_ids: data.valid_participant_ids.clone(),
@@ -183,11 +188,11 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 Box::new(
                     data.valid_participant_ids
                         .iter()
-                        .map(|(index, id)| (*index, *id, output.clone())),
+                        .map(move |(index, id)| (*index, *id, output.clone())),
                 )
             }
             Self::Round3(data) => {
-                let round3_output_data = Round3Data {
+                let round3_output_data: Round3Data<G> = Round3Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     feldman_commitments: data.feldman_commitments.clone(),
@@ -198,11 +203,11 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 Box::new(
                     data.participant_ids
                         .iter()
-                        .map(|(index, id)| (*index, *id, output.clone())),
+                        .map(move |(index, id)| (*index, *id, output.clone())),
                 )
             }
             Self::Round4(data) => {
-                let round4_output_data = Round4Data {
+                let round4_output_data: Round4Data<G> = Round4Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     transcript_hash: data.transcript_hash,
@@ -214,7 +219,16 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 Box::new(
                     data.participant_ids
                         .iter()
-                        .map(|(index, id)| (*index, *id, output.clone())),
+                        .map(move |(index, id)| (*index, *id, output.clone())),
+                )
+            }
+            Self::Round5(public_key) => {
+                let mut output = postcard::to_stdvec(public_key).expect("to serialize into a bytes");
+                output.insert(0, Round::Five as u8);
+                Box::new(
+                    data.participant_ids
+                        .iter()
+                        .map(move |(index, id)| (*index, *id, output.clone())),
                 )
             }
         }

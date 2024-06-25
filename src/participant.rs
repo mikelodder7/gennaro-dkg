@@ -384,8 +384,16 @@ where
         }
     }
 
-    pub fn run(&mut self) -> DkgResult<()> {
-        todo!()
+    /// Run the next step in the protocol
+    pub fn run(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
+        match self.round {
+            Round::Zero => self.round0(),
+            Round::One => self.round1(),
+            Round::Two => self.round2(),
+            Round::Three => self.round3(),
+            Round::Four => self.round4(),
+            Round::Five => self.round5(),
+        }
     }
 
     pub(crate) fn check_sending_participant_id(

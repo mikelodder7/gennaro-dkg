@@ -1,3 +1,4 @@
+//! Traits for the curve25519-dalek crate.
 use crate::traits::*;
 use elliptic_curve::hash2curve::ExpandMsgXmd;
 

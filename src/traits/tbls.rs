@@ -1,3 +1,4 @@
+//! Traits for the BLS12-381 curve.
 use crate::traits::*;
 use blsful::inner_types::*;
 use elliptic_curve::hash2curve::ExpandMsgXmd;

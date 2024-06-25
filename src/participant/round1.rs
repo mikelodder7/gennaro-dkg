@@ -3,14 +3,14 @@ use super::*;
 impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
     Participant<I, G>
 {
-    pub fn round1_ready(&self) -> bool {
+    pub(crate) fn round1_ready(&self) -> bool {
         self.round == Round::One && self.received_round0_data.len() >= self.threshold
     }
 
     /// Compute round1 for this participant.
     ///
     /// Throws an error if this participant is not in round 1.
-    pub fn round1(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
+    pub(crate) fn round1(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
         if !self.round1_ready() {
             return Err(Error::RoundError(
                 Round::One.into(),

@@ -12,7 +12,7 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
     /// Checks if all participants computed the same public key.
     ///
     /// Throws an error if this participant is not in round 5.
-    pub fn round5(&self) -> DkgResult<()> {
+    pub fn round5(&self) -> DkgResult<RoundOutputGenerator<G>> {
         if !self.round5_ready() {
             return Err(Error::RoundError(
                 Round::Five.into(),
@@ -20,6 +20,6 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
             ));
         }
 
-        Ok(())
+        Ok(RoundOu)
     }
 }
