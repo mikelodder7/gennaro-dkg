@@ -1,7 +1,7 @@
 use super::*;
 use crate::serdes::*;
 
-use vsss_rs::{ParticipantNumberGenerator, SequentialParticipantNumberGenerator};
+use vsss_rs::ParticipantNumberGenerator;
 
 /// The parameters used by the DKG participants.
 /// This must be the same for all of them otherwise the protocol

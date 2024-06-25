@@ -1,5 +1,4 @@
 use super::*;
-use std::ops::Deref;
 
 impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
     Participant<I, G>
