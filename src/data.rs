@@ -1,14 +1,11 @@
 use crate::serdes::*;
-use crate::{DkgResult, GroupHasher, SumOfProducts};
-use blsful::inner_types::{Group, GroupEncoding};
+use crate::{GroupHasher, SumOfProducts};
+use blsful::inner_types::GroupEncoding;
 use elliptic_curve::{Field, PrimeField};
 use merlin::Transcript;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
-use std::iter::Sum;
-use vsss_rs::CtIsZero;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Valid rounds
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -131,7 +128,7 @@ pub enum RoundOutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + D
     /// Round 4 output generator
     Round4(Round4OutputGenerator<G>),
     /// The public key
-    Round5(G),
+    Round5(Round4OutputGenerator<G>),
 }
 
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenerator<G> {
@@ -144,7 +141,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 let round0_output_data: Round0Data<G> = Round0Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
-                    sender_type: ParticipantType::Secret,
+                    sender_type: data.sender_type,
                     pedersen_commitment_hash: data.pedersen_commitment_hash,
                     feldman_commitment_hash: data.feldman_commitment_hash,
                 };
@@ -186,7 +183,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     postcard::to_stdvec(&round2_output_data).expect("to serialize into a bytes");
                 output.insert(0, Round::Two as u8);
                 Box::new(
-                    data.valid_participant_ids
+                    data.participant_ids
                         .iter()
                         .map(move |(index, id)| (*index, *id, output.clone())),
                 )
@@ -222,8 +219,8 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                         .map(move |(index, id)| (*index, *id, output.clone())),
                 )
             }
-            Self::Round5(public_key) => {
-                let mut output = postcard::to_stdvec(public_key).expect("to serialize into a bytes");
+            Self::Round5(data) => {
+                let mut output = data.public_key.to_bytes().as_ref().to_vec();
                 output.insert(0, Round::Five as u8);
                 Box::new(
                     data.participant_ids

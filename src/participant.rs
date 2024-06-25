@@ -3,9 +3,8 @@ mod round1;
 mod round2;
 mod round3;
 mod round4;
-mod round5;
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
@@ -18,7 +17,7 @@ use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use vsss_rs::subtle::Choice;
-use vsss_rs::{CtIsZero, FeldmanVerifierSet, ParticipantNumberGenerator, Polynomial};
+use vsss_rs::{ParticipantNumberGenerator, Polynomial};
 
 /// Secret Participant type
 pub type SecretParticipant<G> = Participant<SecretParticipantImpl<G>, G>;
@@ -392,7 +391,7 @@ where
             Round::Two => self.round2(),
             Round::Three => self.round3(),
             Round::Four => self.round4(),
-            Round::Five => self.round5(),
+            Round::Five => Err(Error::RoundError(5, "nothing more to run".to_string())),
         }
     }
 

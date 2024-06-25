@@ -197,7 +197,7 @@ pub(crate) mod prime_field_map {
 
 pub(crate) mod group {
     use blsful::inner_types::{Group, GroupEncoding};
-    use serde::de::{Error as DError, SeqAccess, Unexpected, Visitor};
+    use serde::de::{Error as DError, Unexpected, Visitor};
     use serde::{Deserializer, Serializer};
     use std::fmt::{self, Formatter};
     use std::marker::PhantomData;
