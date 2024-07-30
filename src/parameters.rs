@@ -8,7 +8,7 @@ use vsss_rs::ParticipantNumberGenerator;
 /// will abort.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Parameters<
-    G: Group + GroupEncoding + Default,
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
     P: ParticipantNumberGenerator<G::Scalar> + Default,
 > {
     pub(crate) threshold: usize,
@@ -20,8 +20,10 @@ pub struct Parameters<
     pub(crate) participant_number_generator: P,
 }
 
-impl<G: Group + GroupEncoding + Default, P: ParticipantNumberGenerator<G::Scalar> + Default> Default
-    for Parameters<G, P>
+impl<
+        G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+        P: ParticipantNumberGenerator<G::Scalar> + Default,
+    > Default for Parameters<G, P>
 {
     fn default() -> Self {
         Self {

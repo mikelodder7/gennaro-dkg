@@ -1,12 +1,13 @@
 use gennaro_dkg::*;
 use rstest::*;
 use std::collections::BTreeMap;
+use std::iter::Sum;
 use std::num::NonZeroUsize;
 use vsss_rs::{
     combine_shares,
     curve25519::*,
     elliptic_curve::{group::GroupEncoding, Group},
-    Share,
+    ParticipantNumberGenerator, SequentialParticipantNumberGenerator, Share,
 };
 
 #[rstest]
@@ -16,7 +17,7 @@ use vsss_rs::{
 #[case::ristretto25519(WrappedRistretto::default())]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
-fn init_dkg<G: Group + GroupEncoding + Default>(#[case] _g: G) {
+fn init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g: G) {
     five_participants_init::<G>();
 }
 
@@ -27,7 +28,7 @@ fn init_dkg<G: Group + GroupEncoding + Default>(#[case] _g: G) {
 #[case::ristretto25519(WrappedRistretto::default(), 3)]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 3)]
-fn add_participant_same_threshold<G: Group + GroupEncoding + Default>(
+fn add_participant_same_threshold<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
@@ -42,7 +43,7 @@ fn add_participant_same_threshold<G: Group + GroupEncoding + Default>(
 #[case::ristretto25519(WrappedRistretto::default(), 5)]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
-fn add_participant_increase_threshold<G: Group + GroupEncoding + Default>(
+fn add_participant_increase_threshold<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
@@ -57,7 +58,7 @@ fn add_participant_increase_threshold<G: Group + GroupEncoding + Default>(
 #[case::ristretto25519(WrappedRistretto::default(), 3)]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 3)]
-fn remove_participant_same_threshold<G: Group + GroupEncoding + Default>(
+fn remove_participant_same_threshold<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
@@ -72,7 +73,9 @@ fn remove_participant_same_threshold<G: Group + GroupEncoding + Default>(
 #[case::ristretto25519(WrappedRistretto::default(), 2)]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 2)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
-fn remove_participant_decrease_threshold<G: Group + GroupEncoding + Default>(
+fn remove_participant_decrease_threshold<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
@@ -86,7 +89,9 @@ fn remove_participant_decrease_threshold<G: Group + GroupEncoding + Default>(
 #[case::ristretto25519(WrappedRistretto::default(), 5)]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
-fn add_and_remove_participant_increase_participant<G: Group + GroupEncoding + Default>(
+fn add_and_remove_participant_increase_participant<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
@@ -100,27 +105,36 @@ fn add_and_remove_participant_increase_participant<G: Group + GroupEncoding + De
 #[case::ristretto25519(WrappedRistretto::default(), 2)]
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
-fn add_and_remove_participant_decrease_participant<G: Group + GroupEncoding + Default>(
+fn add_and_remove_participant_decrease_participant<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
     #[case] _g: G,
     #[case] threshold: usize,
 ) {
     five_participants_add_and_remove_decrease_participant::<G>(threshold);
 }
 
-fn five_participants_init<G: Group + GroupEncoding + Default>(
+fn five_participants_init<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
 ) -> (Vec<SecretParticipant<G>>, <G as Group>::Scalar) {
     const THRESHOLD: usize = 3;
     const LIMIT: usize = 5;
 
     let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
     let limit = NonZeroUsize::new(LIMIT).unwrap();
-    let parameters = Parameters::<G>::new(threshold, limit);
+    let seq = SequentialParticipantNumberGenerator::<G::Scalar>::new(None, None, limit);
+    let parameters = Parameters::<G, SequentialParticipantNumberGenerator<G::Scalar>>::new(
+        threshold,
+        limit,
+        None,
+        None,
+        Some(seq.clone()),
+    );
     let mut participants = vec![
-        SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
-        SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
-        SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
-        SecretParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
-        SecretParticipant::<G>::new(NonZeroUsize::new(5).unwrap(), parameters).unwrap(),
+        SecretParticipant::<G>::new(seq.get_participant_id(1), &parameters).unwrap(),
+        SecretParticipant::<G>::new(seq.get_participant_id(2), &parameters).unwrap(),
+        SecretParticipant::<G>::new(seq.get_participant_id(3), &parameters).unwrap(),
+        SecretParticipant::<G>::new(seq.get_participant_id(4), &parameters).unwrap(),
+        SecretParticipant::<G>::new(seq.get_participant_id(5), &parameters).unwrap(),
     ];
 
     let mut r1bdata = Vec::with_capacity(LIMIT);
