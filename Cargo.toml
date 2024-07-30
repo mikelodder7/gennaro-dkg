@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
 repository = "https://github.com/mikelodder7/gennaro-dkg"
-version = "0.9.0-rc1"
+version = "0.9.0-rc2"
 
 [features]
 default = ["curve25519"]
@@ -27,7 +27,7 @@ serde = "1.0"
 serde_bare = "0.5"
 soteria-rs = { version = "0.3", features = ["serde", "elements"] }
 uint-zigzag = { version = "0.2.1", features = ["std"] }
-vsss-rs = { version = "4.0.0", default-features = false, features = ["std"] }
+vsss-rs = { version = "4.3.8", default-features = false, features = ["std"] }
 zeroize = "1"
 
 [dev-dependencies]

@@ -274,15 +274,18 @@ impl_round_to_int!(u8, u16, u32, u128, usize);
 /// Broadcast data from round 1 that should be sent to all other participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round1BroadcastData<G: Group + GroupEncoding + Default> {
+    /// The message generator
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    message_generator: G,
+    pub message_generator: G,
     #[serde(serialize_with = "serialize_g", deserialize_with = "deserialize_g")]
-    blinder_generator: G,
+    /// The blinder generator
+    pub blinder_generator: G,
     #[serde(
         serialize_with = "serialize_g_vec",
         deserialize_with = "deserialize_g_vec"
     )]
-    pedersen_commitments: Vec<G>,
+    /// The Pedersen commitments
+    pub pedersen_commitments: Vec<G>,
 }
 
 #[cfg(test)]
@@ -295,7 +298,8 @@ impl<G: Group + GroupEncoding + Default> serde_encrypt::traits::SerdeEncryptShar
 /// Echo broadcast data from round 2 that should be sent to all valid participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round2EchoBroadcastData {
-    valid_participant_ids: BTreeSet<usize>,
+    /// The current valid participant ids
+    pub valid_participant_ids: BTreeSet<usize>,
 }
 
 #[cfg(test)]
@@ -306,11 +310,12 @@ impl serde_encrypt::traits::SerdeEncryptSharedKey for Round1P2PData {
 /// Broadcast data from round 3 that should be sent to all valid participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round3BroadcastData<G: Group + GroupEncoding + Default> {
+    /// The feldman commitments
     #[serde(
         serialize_with = "serialize_g_vec",
         deserialize_with = "deserialize_g_vec"
     )]
-    commitments: Vec<G>,
+    pub commitments: Vec<G>,
 }
 
 /// Echo broadcast data from round 4 that should be sent to all valid participants
@@ -324,8 +329,10 @@ pub struct Round4EchoBroadcastData<G: Group + GroupEncoding + Default> {
 /// Peer data from round 1 that should only be sent to a specific secret_participant
 #[derive(Clone, Debug, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Round1P2PData {
-    secret_share: Vec<u8>,
-    blind_share: Vec<u8>,
+    /// The secret share
+    pub secret_share: Vec<u8>,
+    /// The blind share
+    pub blind_share: Vec<u8>,
 }
 
 pub(crate) fn serialize_scalar<F: PrimeField, S: Serializer>(
