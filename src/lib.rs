@@ -509,7 +509,7 @@ pub(crate) fn serialize_g_vec<G: Group + GroupEncoding + Default, S: Serializer>
         vv.serialize(s)
     } else {
         let size = G::Repr::default().as_ref().len();
-        let uint = uint_zigzag::Uint::from(g.len());
+        let uint = Uint::from(g.len());
         let length_bytes = uint.to_vec();
         let mut seq = s.serialize_seq(Some(length_bytes.len() + size * g.len()))?;
         for b in &length_bytes {
