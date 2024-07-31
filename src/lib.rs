@@ -205,7 +205,7 @@ mod serdes;
 mod traits;
 mod utils;
 
-use elliptic_curve::{group::GroupEncoding, Group, PrimeField};
+use elliptic_curve::{group::GroupEncoding, PrimeField};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
 

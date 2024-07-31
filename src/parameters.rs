@@ -37,7 +37,7 @@ impl<
 }
 
 impl<
-        G: GroupHasher + GroupEncoding + Default,
+        G: GroupHasher + SumOfProducts + GroupEncoding + Default,
         P: ParticipantNumberGenerator<G::Scalar> + Default,
     > Parameters<G, P>
 {

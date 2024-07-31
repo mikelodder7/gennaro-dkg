@@ -350,25 +350,25 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round0Data<G> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round1Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The sender's ordinal index
-    pub(crate) sender_ordinal: usize,
+    pub sender_ordinal: usize,
     /// The sender's ID
     #[serde(with = "prime_field")]
-    pub(crate) sender_id: G::Scalar,
+    pub sender_id: G::Scalar,
     /// The broadcast data
     #[serde(with = "group")]
-    pub(crate) message_generator: G,
+    pub message_generator: G,
     /// The broadcast data
     #[serde(with = "group")]
-    pub(crate) blinder_generator: G,
+    pub blinder_generator: G,
     #[serde(with = "group_vec")]
     /// The broadcast data
-    pub(crate) pedersen_commitments: Vec<G>,
+    pub pedersen_commitments: Vec<G>,
     #[serde(with = "prime_field")]
     /// The peer 2 peer data
-    pub(crate) secret_share: G::Scalar,
+    pub secret_share: G::Scalar,
     /// The peer 2 peer data
     #[serde(with = "prime_field")]
-    pub(crate) blind_share: G::Scalar,
+    pub blind_share: G::Scalar,
 }
 
 #[cfg(test)]
@@ -402,13 +402,13 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round1Data<G> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round2Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The sender's ordinal index
-    pub(crate) sender_ordinal: usize,
+    pub sender_ordinal: usize,
     /// The sender's ID
     #[serde(with = "prime_field")]
-    pub(crate) sender_id: G::Scalar,
+    pub sender_id: G::Scalar,
     /// The list of remaining valid participant IDs
     #[serde(with = "prime_field_map")]
-    pub(crate) valid_participant_ids: BTreeMap<usize, G::Scalar>,
+    pub valid_participant_ids: BTreeMap<usize, G::Scalar>,
 }
 
 #[cfg(test)]
@@ -434,13 +434,13 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round2Data<G> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Round3Data<G: GroupHasher + GroupEncoding + Default> {
     /// The sender's ordinal index
-    pub(crate) sender_ordinal: usize,
+    pub sender_ordinal: usize,
     /// The sender's ID
     #[serde(with = "prime_field")]
-    pub(crate) sender_id: G::Scalar,
+    pub sender_id: G::Scalar,
     /// The feldman commitments
     #[serde(with = "group_vec")]
-    pub(crate) feldman_commitments: Vec<G>,
+    pub feldman_commitments: Vec<G>,
 }
 
 #[cfg(test)]
@@ -466,15 +466,15 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round3Data<G> {
 #[derive(Copy, Debug, Clone, Serialize, Deserialize)]
 pub struct Round4Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The sender's ordinal index
-    pub(crate) sender_ordinal: usize,
+    pub sender_ordinal: usize,
     /// The sender's ID
     #[serde(with = "prime_field")]
-    pub(crate) sender_id: G::Scalar,
+    pub sender_id: G::Scalar,
     /// The transcript hash of all messages received
-    pub(crate) transcript_hash: [u8; 32],
+    pub transcript_hash: [u8; 32],
     /// The computed public key
     #[serde(with = "group")]
-    pub(crate) public_key: G,
+    pub public_key: G,
 }
 
 #[cfg(test)]
