@@ -14,12 +14,10 @@ use vsss_rs::*;
 /// Valid rounds
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Round {
-    /// Zero round
-    Zero,
     /// First round
     One,
-    // /// Second round
-    // Two,
+    /// Second round
+    Two,
     /// Third round
     Three,
     /// Fourth round
@@ -59,10 +57,10 @@ impl Iterator for RoundIter {
         if self.current <= self.end {
             let current = self.current;
             self.current = match self.current {
-                Round::Zero => Round::One,
+                Round::One => Round::Two,
                 // Round::One => Round::Two,
                 // Round::Two => Round::Three,
-                Round::One => Round::Three,
+                Round::Two => Round::Three,
                 Round::Three => Round::Four,
                 Round::Four => Round::Five,
                 Round::Five => Round::Five,
@@ -77,8 +75,8 @@ impl Iterator for RoundIter {
 impl Display for Round {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Zero => write!(f, "0"),
-            Self::One => write!(f, "1"),
+            Self::One => write!(f, "0"),
+            Self::Two => write!(f, "1"),
             // Self::Two => write!(f, "2"),
             Self::Three => write!(f, "3"),
             Self::Four => write!(f, "4"),
@@ -93,9 +91,8 @@ macro_rules! impl_round_to_int {
             impl From<Round> for $ident {
                 fn from(value: Round) -> Self {
                     match value {
-                        Round::Zero => 0,
                         Round::One => 1,
-                        // Round::Two => 2,
+                        Round::Two => 2,
                         Round::Three => 3,
                         Round::Four => 4,
                         Round::Five => 5,
@@ -108,9 +105,8 @@ macro_rules! impl_round_to_int {
 
                 fn try_from(value: $ident) -> Result<Self, Self::Error> {
                     match value {
-                        0 => Ok(Round::Zero),
                         1 => Ok(Round::One),
-                        // 2 => Ok(Round::Two),
+                        2 => Ok(Round::Two),
                         3 => Ok(Round::Three),
                         4 => Ok(Round::Four),
                         5 => Ok(Round::Five),
@@ -193,9 +189,9 @@ impl<G: GroupHasher + GroupEncoding + SumOfProducts + Default> ParticipantRoundO
 #[derive(Debug, Clone)]
 pub enum RoundOutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// Round 0 output generator
-    Round0(Round0OutputGenerator<G>),
-    /// Round 1 output generator
     Round1(Round1OutputGenerator<G>),
+    /// Round 1 output generator
+    Round2(Round2OutputGenerator<G>),
     /// Round 3 output generator
     Round3(Round3OutputGenerator<G>),
     /// Round 4 output generator
@@ -210,8 +206,8 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
     /// at ordinal index with id.
     pub fn iter(&self) -> Box<dyn Iterator<Item = ParticipantRoundOutput<G>> + '_> {
         match self {
-            Self::Round0(data) => {
-                let round0_output_data: Round0Data<G> = Round0Data {
+            Self::Round1(data) => {
+                let round1_output_data: Round1Data<G> = Round1Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     sender_type: data.sender_type,
@@ -219,8 +215,8 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     feldman_commitment_hash: data.feldman_commitment_hash,
                 };
                 let mut output =
-                    postcard::to_stdvec(&round0_output_data).expect("to serialize into a bytes");
-                output.insert(0, u8::from(Round::Zero));
+                    postcard::to_stdvec(&round1_output_data).expect("to serialize into a bytes");
+                output.insert(0, u8::from(Round::One));
                 Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
                     if *index == data.sender_ordinal {
                         return None;
@@ -228,8 +224,8 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
                 }))
             }
-            Self::Round1(data) => {
-                let mut round1_output_data: Round1Data<G> = Round1Data {
+            Self::Round2(data) => {
+                let mut round2_output_data: Round2Data<G> = Round2Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     message_generator: data.message_generator,
@@ -244,11 +240,11 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     }
                     debug_assert_eq!(data.secret_share[index].identifier, id);
                     debug_assert_eq!(data.blind_share[index].identifier, id);
-                    round1_output_data.secret_share = data.secret_share[index];
-                    round1_output_data.blind_share = data.blind_share[index];
-                    let mut output = postcard::to_stdvec(&round1_output_data)
+                    round2_output_data.secret_share = data.secret_share[index];
+                    round2_output_data.blind_share = data.blind_share[index];
+                    let mut output = postcard::to_stdvec(&round2_output_data)
                         .expect("to serialize into a bytes");
-                    output.insert(0, u8::from(Round::One));
+                    output.insert(0, u8::from(Round::Two));
                     Some(ParticipantRoundOutput::new(*index, id, output))
                 }))
             }
@@ -302,7 +298,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
 
 /// The output generator for round 0
 #[derive(Debug, Clone)]
-pub struct Round0OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
+pub struct Round1OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The participant IDs to send to
     pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's participant type
@@ -319,7 +315,7 @@ pub struct Round0OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding 
 
 /// The output generator for round 1
 #[derive(Debug, Clone)]
-pub struct Round1OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
+pub struct Round2OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The participant IDs to send to
     pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's ordinal index
@@ -370,7 +366,7 @@ pub struct Round4OutputGenerator<G: GroupHasher + GroupEncoding + Default> {
 
 /// Broadcast data for Round 0
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Round0Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
+pub struct Round1Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
@@ -386,12 +382,12 @@ pub struct Round0Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
 
 #[cfg(test)]
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
-    serde_encrypt::traits::SerdeEncryptSharedKey for Round0Data<G>
+    serde_encrypt::traits::SerdeEncryptSharedKey for Round1Data<G>
 {
     type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
 }
 
-impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round0Data<G> {
+impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round1Data<G> {
     /// Add the payload to the transcript
     pub fn add_to_transcript(&self, transcript: &mut Transcript) {
         transcript.append_u64(b"sender ordinal", self.sender_ordinal as u64);
@@ -404,7 +400,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round0Data<G> {
 
 /// Broadcast data from round 1 that should be sent to all other participants
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Round1Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
+pub struct Round2Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The sender's ordinal index
     pub sender_ordinal: usize,
     /// The sender's ID
@@ -433,12 +429,12 @@ pub struct Round1Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
 
 #[cfg(test)]
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
-    serde_encrypt::traits::SerdeEncryptSharedKey for Round1Data<G>
+    serde_encrypt::traits::SerdeEncryptSharedKey for Round2Data<G>
 {
     type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
 }
 
-impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round1Data<G> {
+impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round2Data<G> {
     /// Add the payload to the transcript
     pub fn add_to_transcript(&self, transcript: &mut Transcript) {
         transcript.append_u64(b"sender ordinal", self.sender_ordinal as u64);
@@ -524,8 +520,8 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
 
 #[test]
 fn range_int() {
-    println!("Round::Zero: {}", u8::from(Round::Zero));
-    println!("Round::One:  {}", u8::from(Round::One));
+    println!("Round::Zero: {}", u8::from(Round::One));
+    println!("Round::One:  {}", u8::from(Round::Two));
     println!("Round::Three:  {}", u8::from(Round::Three));
     println!("Round::Four:  {}", u8::from(Round::Four));
     println!("Round::Five:  {}", u8::from(Round::Five));

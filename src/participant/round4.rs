@@ -34,7 +34,7 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
 
         for (ordinal, round3) in &self.received_round3_data {
             public_key += *round3.feldman_commitments[0];
-            let r1data = &self.received_round1_data[ordinal];
+            let r1data = &self.received_round2_data[ordinal];
             debug_assert_eq!(r1data.secret_share.identifier, self.id);
             secret_share += *r1data.secret_share.value;
         }

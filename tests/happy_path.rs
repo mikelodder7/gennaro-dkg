@@ -189,7 +189,7 @@ fn static_five_participants_add_participant<
         Box::new(RefreshParticipant::<G>::new(pids[6], &parameters).unwrap()),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -267,7 +267,7 @@ fn static_five_participants_remove_participant<
         ),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -349,7 +349,7 @@ fn static_five_participants_add_and_remove_decrease_participant<
         Box::new(RefreshParticipant::<G>::new(share_ids[3], &parameters).unwrap()),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -433,7 +433,7 @@ fn static_five_participants_add_and_remove_increase_participant<
         Box::new(RefreshParticipant::<G>::new(share_ids[5], &parameters).unwrap()),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -490,7 +490,7 @@ where
         })
         .collect::<Vec<Box<dyn AnyParticipant<G>>>>();
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -644,7 +644,7 @@ fn five_participants_init<G: GroupHasher + SumOfProducts + GroupEncoding + Defau
         })
         .collect::<Vec<Box<dyn AnyParticipant<G>>>>();
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -751,7 +751,7 @@ fn five_participants_add_participant<G: GroupHasher + GroupEncoding + SumOfProdu
         ),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -830,7 +830,7 @@ fn five_participants_remove_participant<
         ),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -914,7 +914,7 @@ fn five_participants_add_and_remove_decrease_participant<
         ),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }
@@ -1003,7 +1003,7 @@ fn five_participants_add_and_remove_increase_participant<
         ),
     ];
 
-    for _ in Round::range(Round::Zero, Round::Four) {
+    for _ in Round::range(Round::One, Round::Four) {
         let round_generators = next_round(&mut participants);
         receive(&mut participants, &round_generators);
     }

@@ -1,5 +1,5 @@
-mod round0;
 mod round1;
+mod round2;
 mod round3;
 mod round4;
 
@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    DkgResult, Error, GroupHasher, Parameters, ParticipantType, Round, Round0Data, Round1Data,
+    DkgResult, Error, GroupHasher, Parameters, ParticipantType, Round, Round1Data, Round2Data,
     Round3Data, Round4Data, RoundOutputGenerator,
 };
 use elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField};
@@ -79,8 +79,8 @@ where
     pub(crate) blinder_generator: G,
     pub(crate) public_key: ValueGroup<G>,
     pub(crate) powers_of_i: Vec<G::Scalar>,
-    pub(crate) received_round0_data: BTreeMap<usize, Round0Data<G>>,
     pub(crate) received_round1_data: BTreeMap<usize, Round1Data<G>>,
+    pub(crate) received_round2_data: BTreeMap<usize, Round2Data<G>>,
     pub(crate) received_round3_data: BTreeMap<usize, Round3Data<G>>,
     pub(crate) received_round4_data: BTreeMap<usize, Round4Data<G>>,
     pub(crate) valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
@@ -106,8 +106,8 @@ where
             .field("blind_share", &self.blind_share)
             .field("public_key", &self.public_key)
             .field("powers_of_i", &self.powers_of_i)
-            .field("received_round0_data", &self.received_round0_data)
             .field("received_round1_data", &self.received_round1_data)
+            .field("received_round2_data", &self.received_round2_data)
             .field("received_round3_data", &self.received_round3_data)
             .field("received_round4_data", &self.received_round4_data)
             .field("valid_participant_ids", &self.valid_participant_ids)
@@ -262,7 +262,7 @@ where
             id,
             threshold: parameters.threshold,
             limit: parameters.limit,
-            round: Round::Zero,
+            round: Round::One,
             components,
             secret_share: SecretShare::<G::Scalar>::default(),
             blind_share: SecretShare::<G::Scalar>::default(),
@@ -270,8 +270,8 @@ where
             blinder_generator: parameters.blinder_generator,
             public_key: ValueGroup::<G>::identity(),
             powers_of_i,
-            received_round0_data: BTreeMap::new(),
             received_round1_data: BTreeMap::new(),
+            received_round2_data: BTreeMap::new(),
             received_round3_data: BTreeMap::new(),
             received_round4_data: BTreeMap::new(),
             valid_participant_ids: BTreeMap::new(),
@@ -343,17 +343,35 @@ where
         &self.all_participant_ids
     }
 
+    /// Return the pedersen blinded verifiers
+    pub fn get_pedersen_verifiers(&self) -> Vec<ShareVerifierGroup<G>> {
+        let pedersen_verifier_set: VecPedersenVerifierSet<
+            SecretShare<G::Scalar>,
+            ShareVerifierGroup<G>,
+        > = self.components.pedersen_verifier_set().into();
+        pedersen_verifier_set.blind_verifiers().to_vec()
+    }
+
+    /// Return the feldman verifiers
+    pub fn get_feldman_verifiers(&self) -> Vec<ShareVerifierGroup<G>> {
+        let feldman_verifier_set: VecFeldmanVerifierSet<
+            SecretShare<G::Scalar>,
+            ShareVerifierGroup<G>,
+        > = self.components.feldman_verifier_set().into();
+        feldman_verifier_set.verifiers().to_vec()
+    }
+
     /// Receive data from another participant
     pub fn receive(&mut self, data: &[u8]) -> DkgResult<()> {
         let round = Round::try_from(data[0]).map_err(Error::InitializationError)?;
         match round {
-            Round::Zero => {
-                let round0_payload = postcard::from_bytes::<Round0Data<G>>(&data[1..])?;
-                self.receive_round0data(round0_payload)
-            }
             Round::One => {
                 let round1_payload = postcard::from_bytes::<Round1Data<G>>(&data[1..])?;
                 self.receive_round1data(round1_payload)
+            }
+            Round::Two => {
+                let round2_payload = postcard::from_bytes::<Round2Data<G>>(&data[1..])?;
+                self.receive_round2data(round2_payload)
             }
             Round::Three => {
                 let round3_payload = postcard::from_bytes::<Round3Data<G>>(&data[1..])?;
@@ -373,8 +391,8 @@ where
     /// Run the next step in the protocol
     pub fn run(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
         match self.round {
-            Round::Zero => self.round0(),
             Round::One => self.round1(),
+            Round::Two => self.round2(),
             Round::Three => self.round3(),
             Round::Four => self.round4(),
             Round::Five => Err(Error::RoundError(
@@ -545,6 +563,10 @@ where
     fn get_valid_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>>;
     /// Get all participant ids that started the protocol
     fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>>;
+    /// Return the pedersen blinded verifiers
+    fn get_pedersen_verifiers(&self) -> Vec<ShareVerifierGroup<G>>;
+    /// Return the feldman verifiers
+    fn get_feldman_verifiers(&self) -> Vec<ShareVerifierGroup<G>>;
     /// Check if the participant is completed
     fn completed(&self) -> bool;
     /// Receive data from another participant
@@ -591,6 +613,14 @@ where
 
     fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
         &self.all_participant_ids
+    }
+
+    fn get_pedersen_verifiers(&self) -> Vec<ShareVerifierGroup<G>> {
+        self.get_pedersen_verifiers()
+    }
+
+    fn get_feldman_verifiers(&self) -> Vec<ShareVerifierGroup<G>> {
+        self.get_feldman_verifiers()
     }
 
     fn completed(&self) -> bool {
@@ -644,6 +674,14 @@ where
 
     fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
         &self.all_participant_ids
+    }
+
+    fn get_pedersen_verifiers(&self) -> Vec<ShareVerifierGroup<G>> {
+        self.get_pedersen_verifiers()
+    }
+
+    fn get_feldman_verifiers(&self) -> Vec<ShareVerifierGroup<G>> {
+        self.get_feldman_verifiers()
     }
 
     fn completed(&self) -> bool {

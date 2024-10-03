@@ -75,7 +75,7 @@
 //! ];
 //!
 //! // Run all rounds
-//! for _ in Round::range(Round::Zero, Round::Four) {
+//! for _ in Round::range(Round::One, Round::Four) {
 //!    let generators = next_round(&mut participants);
 //!    receive(&mut participants, generators);
 //! }
@@ -199,7 +199,7 @@ mod tests {
             .map(|id| SecretParticipant::<G>::new(id, &parameters).unwrap())
             .collect::<Vec<_>>();
 
-        for _ in Round::range(Round::Zero, Round::One) {
+        for _ in Round::range(Round::One, Round::Two) {
             let generators = next_round(&mut participants);
             receive(&mut participants, generators);
         }
