@@ -1,5 +1,8 @@
+use elliptic_curve::Field;
 use elliptic_curve_tools::SumOfProducts;
 use gennaro_dkg::*;
+use rand_chacha::ChaCha8Rng;
+use rand_core::{RngCore, SeedableRng};
 use rstest::*;
 use std::num::NonZeroUsize;
 use vsss_rs::{
@@ -8,6 +11,513 @@ use vsss_rs::{
     IdentifierPrimeField, ParticipantIdGeneratorCollection, ParticipantIdGeneratorType,
     ReadableShareSet,
 };
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY)]
+#[case::p256(p256::ProjectivePoint::IDENTITY)]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
+fn static_init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g: G) {
+    let rng = ChaCha8Rng::from_seed([0u8; 32]);
+    static_numbering_init_dkg::<G>(rng);
+}
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY)]
+#[case::p256(p256::ProjectivePoint::IDENTITY)]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
+fn static_add_participant_same_threshold<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
+    #[case] _g: G,
+) {
+    const THRESHOLD: usize = 3;
+    static_five_participants_add_participant::<G>(THRESHOLD);
+}
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY)]
+#[case::p256(p256::ProjectivePoint::IDENTITY)]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
+fn static_add_participant_increase_threshold<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
+    #[case] _g: G,
+) {
+    const THRESHOLD: usize = 5;
+    static_five_participants_add_participant::<G>(THRESHOLD)
+}
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::default())]
+#[case::p256(p256::ProjectivePoint::default())]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::default())]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::default())]
+fn static_remove_participant_same_threshold<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
+    #[case] _g: G,
+) {
+    const THRESHOLD: usize = 3;
+    static_five_participants_remove_participant::<G>(THRESHOLD);
+}
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::default())]
+#[case::p256(p256::ProjectivePoint::default())]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::default())]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::default())]
+fn static_remove_participant_decrease_threshold<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
+    #[case] _g: G,
+) {
+    const THRESHOLD: usize = 2;
+    static_five_participants_remove_participant::<G>(THRESHOLD);
+}
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 5)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 5)]
+#[case::ed25519(WrappedEdwards::default(), 5)]
+#[case::ristretto25519(WrappedRistretto::default(), 5)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
+fn static_add_and_remove_participant_increase_participant<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    static_five_participants_add_and_remove_increase_participant::<G>(threshold);
+}
+
+#[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY, 3)]
+#[case::p256(p256::ProjectivePoint::IDENTITY, 4)]
+#[case::ed25519(WrappedEdwards::default(), 3)]
+#[case::ristretto25519(WrappedRistretto::default(), 2)]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
+fn static_add_and_remove_participant_decrease_participant<
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+>(
+    #[case] _g: G,
+    #[case] threshold: usize,
+) {
+    static_five_participants_add_and_remove_decrease_participant::<G>(threshold);
+}
+
+fn static_five_participants_add_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
+    threshold: usize,
+) {
+    const LIMIT: usize = 5;
+    const INCREMENT: usize = 2;
+
+    let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+    let (participants, secret) = static_numbering_init_dkg::<G>(&mut rng);
+
+    let threshold = NonZeroUsize::new(threshold).unwrap();
+    let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
+    let mut pids = participants.iter().map(|p| p.get_id()).collect::<Vec<_>>();
+    pids.push(IdentifierPrimeField(G::Scalar::random(&mut rng)));
+    pids.push(IdentifierPrimeField(G::Scalar::random(&mut rng)));
+    let seq = vec![ParticipantIdGeneratorType::list(&pids)];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 7] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[0].get_id(),
+                &participants[0].get_secret_share().unwrap(),
+                &parameters,
+                &pids[..participants.len()],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[1].get_id(),
+                &participants[1].get_secret_share().unwrap(),
+                &parameters,
+                &pids[..participants.len()],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[2].get_id(),
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &pids[..participants.len()],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[3].get_id(),
+                &participants[3].get_secret_share().unwrap(),
+                &parameters,
+                &pids[..participants.len()],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[4].get_id(),
+                &participants[4].get_secret_share().unwrap(),
+                &parameters,
+                &pids[..participants.len()],
+            )
+            .unwrap(),
+        ),
+        Box::new(RefreshParticipant::<G>::new(pids[5], &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(pids[6], &parameters).unwrap()),
+    ];
+
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+
+    let res = (&shares[..threshold.get()]).combine();
+    assert!(res.is_ok());
+    let new_secret = res.unwrap();
+
+    let actual_pk = G::generator() * *new_secret;
+
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret, *new_secret);
+}
+
+fn static_five_participants_remove_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
+    threshold: usize,
+) {
+    const LIMIT: usize = 3;
+    let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+    let (participants, secret) = static_numbering_init_dkg::<G>(&mut rng);
+
+    let threshold = NonZeroUsize::new(threshold).unwrap();
+    let limit = NonZeroUsize::new(LIMIT).unwrap();
+    let share_ids = [
+        participants[0].get_id(),
+        participants[2].get_id(),
+        participants[4].get_id(),
+    ];
+    let seq = vec![ParticipantIdGeneratorType::list(share_ids.as_slice())];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 3] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[0],
+                &participants[0].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[1],
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[2],
+                &participants[4].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+    ];
+
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+
+    let res = shares.combine();
+    assert!(res.is_ok());
+    let new_secret = res.unwrap();
+
+    let actual_pk = G::generator() * *new_secret;
+
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret, *new_secret);
+}
+
+fn static_five_participants_add_and_remove_decrease_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
+    threshold: usize,
+) {
+    const LIMIT: usize = 3;
+    const INCREMENT: usize = 1;
+    let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+    let (participants, secret) = static_numbering_init_dkg::<G>(&mut rng);
+
+    let threshold = NonZeroUsize::new(threshold).unwrap();
+    let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
+    let share_ids = [
+        participants[1].get_id(),
+        participants[2].get_id(),
+        participants[3].get_id(),
+        IdentifierPrimeField(G::Scalar::random(&mut rng)),
+    ];
+
+    let seq = vec![ParticipantIdGeneratorType::list(&share_ids)];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 4] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[0],
+                &participants[1].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids[..3],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[1],
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids[..3],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[2],
+                &participants[3].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids[..3],
+            )
+            .unwrap(),
+        ),
+        Box::new(RefreshParticipant::<G>::new(share_ids[3], &parameters).unwrap()),
+    ];
+
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+    let res = shares.combine();
+    assert!(res.is_ok());
+    let new_secret = res.unwrap();
+    let actual_pk = G::generator() * *new_secret;
+
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret, *new_secret);
+}
+
+fn static_five_participants_add_and_remove_increase_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
+    threshold: usize,
+) {
+    const LIMIT: usize = 3;
+    const INCREMENT: usize = 3;
+
+    let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
+    let (participants, secret) = static_numbering_init_dkg::<G>(&mut rng);
+
+    let threshold = NonZeroUsize::new(threshold).unwrap();
+    let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
+    let share_ids = [
+        participants[1].get_id(),
+        participants[2].get_id(),
+        participants[4].get_id(),
+        IdentifierPrimeField(G::Scalar::random(&mut rng)),
+        IdentifierPrimeField(G::Scalar::random(&mut rng)),
+        IdentifierPrimeField(G::Scalar::random(&mut rng)),
+    ];
+    let seq = vec![ParticipantIdGeneratorType::list(&share_ids)];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 6] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[0],
+                &participants[1].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids[..3],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[1],
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids[..3],
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                share_ids[2],
+                &participants[4].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids[..3],
+            )
+            .unwrap(),
+        ),
+        Box::new(RefreshParticipant::<G>::new(share_ids[3], &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(share_ids[4], &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(share_ids[5], &parameters).unwrap()),
+    ];
+
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+    let res = shares.combine();
+    assert!(res.is_ok());
+    let new_secret = res.unwrap();
+    let actual_pk = G::generator() * *new_secret;
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret, *new_secret);
+}
+
+fn static_numbering_init_dkg<G>(
+    mut rng: impl RngCore,
+) -> (Vec<Box<dyn AnyParticipant<G>>>, <G as Group>::Scalar)
+where
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+{
+    const THRESHOLD: usize = 3;
+    const LIMIT: usize = 5;
+
+    let ids = (0..LIMIT)
+        .map(|_| IdentifierPrimeField(G::Scalar::random(&mut rng)))
+        .collect::<Vec<_>>();
+
+    let seq =
+        vec![ParticipantIdGeneratorType::<IdentifierPrimeField<G::Scalar>>::list(ids.as_slice())];
+    let parameters = Parameters::<G>::new(
+        NonZeroUsize::new(THRESHOLD).unwrap(),
+        NonZeroUsize::new(LIMIT).unwrap(),
+        None,
+        None,
+        Some(seq.clone()),
+    );
+
+    let mut participants = ParticipantIdGeneratorCollection::from(&seq)
+        .iter()
+        .map(|id| {
+            let p = Box::new(SecretParticipant::<G>::new(id, &parameters).unwrap());
+            p as Box<dyn AnyParticipant<G>>
+        })
+        .collect::<Vec<Box<dyn AnyParticipant<G>>>>();
+
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    for i in 1..LIMIT {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+
+    let res = shares.combine();
+    assert!(res.is_ok());
+    let secret = res.unwrap();
+
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        G::generator() * *secret
+    );
+
+    (participants, *secret)
+}
 
 #[rstest]
 #[case::k256(k256::ProjectivePoint::IDENTITY)]
@@ -125,12 +635,7 @@ fn five_participants_init<G: GroupHasher + SumOfProducts + GroupEncoding + Defau
             None, None, limit,
         ),
     ];
-    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
-    let seq = vec![
-        ParticipantIdGeneratorType::<IdentifierPrimeField<G::Scalar>>::sequential(
-            None, None, limit,
-        ),
-    ];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq.clone()));
     let mut participants = ParticipantIdGeneratorCollection::from(&seq)
         .iter()
         .map(|id| {
@@ -144,26 +649,12 @@ fn five_participants_init<G: GroupHasher + SumOfProducts + GroupEncoding + Defau
         receive(&mut participants, &round_generators);
     }
 
-    assert_eq!(
-        participants[0].get_public_key().unwrap(),
-        participants[1].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[1].get_public_key().unwrap(),
-        participants[2].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[2].get_public_key().unwrap(),
-        participants[3].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[3].get_public_key().unwrap(),
-        participants[4].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[4].get_public_key().unwrap(),
-        participants[1].get_public_key().unwrap()
-    );
+    for i in 1..LIMIT {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
 
     let shares = participants
         .iter()
@@ -265,30 +756,12 @@ fn five_participants_add_participant<G: GroupHasher + GroupEncoding + SumOfProdu
         receive(&mut participants, &round_generators);
     }
 
-    assert_eq!(
-        participants[0].get_public_key().unwrap(),
-        participants[1].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[1].get_public_key().unwrap(),
-        participants[2].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[2].get_public_key().unwrap(),
-        participants[3].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[3].get_public_key().unwrap(),
-        participants[4].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[4].get_public_key().unwrap(),
-        participants[5].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[5].get_public_key().unwrap(),
-        participants[6].get_public_key().unwrap()
-    );
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
 
     let shares = participants
         .iter()
@@ -362,14 +835,12 @@ fn five_participants_remove_participant<
         receive(&mut participants, &round_generators);
     }
 
-    assert_eq!(
-        participants[0].get_public_key().unwrap(),
-        participants[1].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[1].get_public_key().unwrap(),
-        participants[2].get_public_key().unwrap()
-    );
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
 
     let shares = participants
         .iter()
@@ -448,18 +919,12 @@ fn five_participants_add_and_remove_decrease_participant<
         receive(&mut participants, &round_generators);
     }
 
-    assert_eq!(
-        participants[0].get_public_key().unwrap(),
-        participants[1].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[1].get_public_key().unwrap(),
-        participants[2].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[2].get_public_key().unwrap(),
-        participants[3].get_public_key().unwrap()
-    );
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
 
     let shares = participants
         .iter()
@@ -543,26 +1008,12 @@ fn five_participants_add_and_remove_increase_participant<
         receive(&mut participants, &round_generators);
     }
 
-    assert_eq!(
-        participants[0].get_public_key().unwrap(),
-        participants[1].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[1].get_public_key().unwrap(),
-        participants[2].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[2].get_public_key().unwrap(),
-        participants[3].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[3].get_public_key().unwrap(),
-        participants[4].get_public_key().unwrap()
-    );
-    assert_eq!(
-        participants[4].get_public_key().unwrap(),
-        participants[5].get_public_key().unwrap()
-    );
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
 
     let shares = participants
         .iter()
