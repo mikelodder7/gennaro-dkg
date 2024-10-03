@@ -29,7 +29,7 @@
 //!     collections::BTreeMap,
 //!     num::NonZeroUsize,
 //! };
-//! use vsss_rs::{Share, combine_shares, elliptic_curve::{Group, PrimeField}};
+//! use vsss_rs::{Share, ShareElement, elliptic_curve::{Group, PrimeField}};
 //!
 //! let parameters = Parameters::new(NonZeroUsize::new(2).unwrap(), NonZeroUsize::new(3).unwrap());
 //!
@@ -196,17 +196,14 @@
 pub use rand_core;
 pub use vsss_rs;
 
-mod consts;
 mod data;
 mod error;
 mod parameters;
 mod participant;
-mod serdes;
 mod traits;
 mod utils;
 
-use elliptic_curve::{group::GroupEncoding, PrimeField};
-use serde::{Deserialize, Serialize};
+use elliptic_curve::group::GroupEncoding;
 use std::num::NonZeroUsize;
 
 pub use data::*;
@@ -218,404 +215,109 @@ pub use traits::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_encrypt::traits::SerdeEncryptSharedKey;
-    use std::collections::BTreeMap;
-    use vsss_rs::{combine_shares, SequentialParticipantNumberGenerator, Share};
+    use elliptic_curve::group::GroupEncoding;
+    use elliptic_curve_tools::SumOfProducts;
+    use rstest::*;
+    use vsss_rs::{
+        IdentifierPrimeField, ParticipantIdGeneratorCollection, ParticipantIdGeneratorType,
+        ReadableShareSet,
+    };
 
     #[test]
     fn one_corrupted_party_k256() {
-        one_corrupted_party::<tk256::ProjectivePoint>()
+        one_corrupted_party::<k256::ProjectivePoint>(k256::ProjectivePoint::default());
     }
 
-    #[test]
-    fn one_corrupted_party_p256() {
-        one_corrupted_party::<tp256::ProjectivePoint>()
-    }
-
-    #[test]
-    fn one_corrupted_party_curve25519() {
-        one_corrupted_party::<vsss_rs::curve25519::WrappedRistretto>();
-        one_corrupted_party::<vsss_rs::curve25519::WrappedEdwards>();
-    }
-
-    #[test]
-    fn one_corrupted_party_bls12_381() {
-        one_corrupted_party::<blsful::inner_types::G1Projective>();
-        one_corrupted_party::<blsful::inner_types::G2Projective>();
-    }
-
-    fn one_corrupted_party<G: GroupHasher + GroupEncoding + Default>() {
+    #[rstest]
+    #[case::k256(k256::ProjectivePoint::default())]
+    #[case::p256(p256::ProjectivePoint::default())]
+    #[case::blsg1(blsful::inner_types::G1Projective::default())]
+    #[case::blsg2(blsful::inner_types::G2Projective::default())]
+    #[case::ed25519(vsss_rs::curve25519::WrappedEdwards::default())]
+    #[case::ristretto(vsss_rs::curve25519::WrappedRistretto::default())]
+    fn one_corrupted_party<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
+        #[case] _g: G,
+    ) {
         const THRESHOLD: usize = 2;
         const LIMIT: usize = 4;
         const BAD_ID: usize = 4;
 
         let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
         let limit = NonZeroUsize::new(LIMIT).unwrap();
-        let parameters = Parameters::<G, SequentialParticipantNumberGenerator<G::Scalar>>::new(
-            threshold, limit, None, None, None,
-        );
-        let mut participants = [
-            SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
+        let numbering = vec![ParticipantIdGeneratorType::sequential(
+            None,
+            None,
+            NonZeroUsize::new(4).unwrap(),
+        )];
+        let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(numbering));
+        let numbering = vec![
+            ParticipantIdGeneratorType::<IdentifierPrimeField<G::Scalar>>::sequential(
+                None,
+                None,
+                NonZeroUsize::new(4).unwrap(),
+            ),
         ];
+        let mut participants = ParticipantIdGeneratorCollection::from(&numbering)
+            .iter()
+            .map(|id| SecretParticipant::<G>::new(id, &parameters).unwrap())
+            .collect::<Vec<_>>();
 
-        let mut r1bdata = Vec::with_capacity(LIMIT);
-        let mut r1p2pdata = Vec::with_capacity(LIMIT);
-        for p in participants.iter_mut() {
-            let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-            r1bdata.push(broadcast);
-            r1p2pdata.push(p2p);
-        }
-        for p in participants.iter_mut() {
-            assert!(p.round1().is_err());
+        for _ in Round::range(Round::Zero, Round::One) {
+            let generators = next_round(&mut participants);
+            receive(&mut participants, generators);
         }
 
         // Corrupt bad actor
-        for i in 0..THRESHOLD {
-            r1bdata[BAD_ID - 1].pedersen_commitments[i] = G::identity();
+        participants.remove(BAD_ID - 1);
+        for _ in Round::range(Round::Two, Round::Four) {
+            let generators = next_round(&mut participants);
+            receive(&mut participants, generators);
         }
 
-        let mut r2bdata = BTreeMap::new();
+        let shares = participants
+            .iter()
+            .map(|p| p.get_secret_share().unwrap())
+            .collect::<Vec<_>>();
 
-        for i in 0..LIMIT {
-            let mut bdata = BTreeMap::new();
-            let mut p2pdata = BTreeMap::new();
-
-            let my_id = participants[i].get_id();
-            for j in 0..LIMIT {
-                let pp = &participants[j];
-                let id = pp.get_id();
-                if my_id == id {
-                    continue;
-                }
-                bdata.insert(id, r1bdata[id - 1].clone());
-                p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-            }
-            let p = &mut participants[i];
-            let res = p.round2(bdata, p2pdata);
-            assert!(res.is_ok());
-            if my_id == BAD_ID {
-                continue;
-            }
-            r2bdata.insert(my_id, res.unwrap());
-        }
-
-        let mut r3bdata = BTreeMap::new();
-        for p in participants.iter_mut() {
-            if BAD_ID == p.get_id() {
-                continue;
-            }
-            let res = p.round3(&r2bdata);
-            assert!(res.is_ok());
-            r3bdata.insert(p.get_id(), res.unwrap());
-            assert!(p.round3(&r2bdata).is_err());
-        }
-
-        let mut r4bdata = BTreeMap::new();
-        let mut r4shares = Vec::with_capacity(LIMIT);
-        for p in participants.iter_mut() {
-            if BAD_ID == p.get_id() {
-                continue;
-            }
-            let res = p.round4(&r3bdata);
-            assert!(res.is_ok());
-            let bdata = res.unwrap();
-            let share = p.get_secret_share().unwrap();
-            r4bdata.insert(p.get_id(), bdata);
-            r4shares
-                .push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-            assert!(p.round4(&r3bdata).is_err());
-        }
-
-        for p in &participants {
-            if BAD_ID == p.get_id() {
-                continue;
-            }
-            assert!(p.round5(&r4bdata).is_ok());
-        }
-
-        let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
+        let res = shares.combine();
         assert!(res.is_ok());
         let secret = res.unwrap();
 
-        assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
+        let expected_pk = G::generator() * *secret;
+
+        assert_eq!(participants[1].get_public_key().unwrap(), expected_pk);
     }
 
-    #[test]
-    fn serialization_k256() {
-        serialization_curve::<tk256::ProjectivePoint>();
-    }
-
-    #[test]
-    fn serialization_p256() {
-        serialization_curve::<tp256::ProjectivePoint>();
-    }
-
-    #[test]
-    fn serialization_bls12_381_g1() {
-        serialization_curve::<blsful::inner_types::G1Projective>();
-    }
-
-    #[test]
-    fn serialization_bls12_381_g2() {
-        serialization_curve::<blsful::inner_types::G2Projective>();
-    }
-
-    #[cfg(feature = "curve25519")]
-    #[test]
-    fn serialization_curve25519() {
-        serialization_curve::<vsss_rs::curve25519::WrappedRistretto>();
-        serialization_curve::<vsss_rs::curve25519::WrappedEdwards>();
-    }
-
-    fn serialization_curve<G: Group + GroupEncoding + Default>() {
-        const THRESHOLD: usize = 2;
-        const LIMIT: usize = 3;
-
-        let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
-        let limit = NonZeroUsize::new(LIMIT).unwrap();
-        let parameters = Parameters::<G>::new(threshold, limit);
-        let mut participants = [
-            SecretParticipant::<G>::new(NonZeroUsize::new(1).unwrap(), parameters).unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(2).unwrap(), parameters).unwrap(),
-            SecretParticipant::<G>::new(NonZeroUsize::new(3).unwrap(), parameters).unwrap(),
-        ];
-
-        let mut r1bdata = Vec::<Round1BroadcastData<G>>::with_capacity(LIMIT);
-        let mut r1pdata = Vec::<BTreeMap<usize, Round1P2PData>>::with_capacity(LIMIT);
-
-        for participant in participants.iter_mut() {
-            let (bdata, pdata) = participant.round1().unwrap();
-
-            // text serialize test
-            let json = serde_json::to_string(&bdata).unwrap();
-            let res = serde_json::from_str::<Round1BroadcastData<G>>(&json);
-            assert!(res.is_ok());
-            let bdata2 = res.unwrap();
-            assert_eq!(bdata.message_generator, bdata.message_generator);
-            assert_eq!(bdata.blinder_generator, bdata2.blinder_generator);
-            assert_eq!(
-                bdata.pedersen_commitments[0],
-                bdata2.pedersen_commitments[0]
-            );
-            assert_eq!(
-                bdata.pedersen_commitments[1],
-                bdata2.pedersen_commitments[1]
-            );
-
-            let json = serde_json::to_string(&pdata).unwrap();
-            let res = serde_json::from_str::<BTreeMap<usize, Round1P2PData>>(&json);
-            assert!(res.is_ok());
-            let pdata2 = res.unwrap();
-            assert_eq!(pdata.len(), pdata2.len());
-            for (id, val) in &pdata {
-                assert!(pdata2.contains_key(id));
-                assert_eq!(val.secret_share, pdata2[id].secret_share);
-                assert_eq!(val.blind_share, pdata2[id].blind_share);
-            }
-
-            // binary serialize test
-            let bin = serde_bare::to_vec(&bdata).unwrap();
-            let res = serde_bare::from_slice::<Round1BroadcastData<G>>(&bin);
-            assert!(res.is_ok());
-            let bdata2 = res.unwrap();
-            assert_eq!(bdata.message_generator, bdata.message_generator);
-            assert_eq!(bdata.blinder_generator, bdata2.blinder_generator);
-            assert_eq!(
-                bdata.pedersen_commitments[0],
-                bdata2.pedersen_commitments[0]
-            );
-            assert_eq!(
-                bdata.pedersen_commitments[1],
-                bdata2.pedersen_commitments[1]
-            );
-
-            let bin = serde_bare::to_vec(&pdata).unwrap();
-            let res = serde_bare::from_slice::<BTreeMap<usize, Round1P2PData>>(&bin);
-            assert!(res.is_ok());
-            let pdata2 = res.unwrap();
-            assert_eq!(pdata.len(), pdata2.len());
-            for (id, val) in &pdata {
-                assert!(pdata2.contains_key(id));
-                assert_eq!(val.secret_share, pdata2[id].secret_share);
-                assert_eq!(val.blind_share, pdata2[id].blind_share);
-            }
-
-            let shared_key = serde_encrypt::shared_key::SharedKey::new([1u8; 32]);
-            let bin = bdata.encrypt(&shared_key).unwrap();
-            let res = Round1BroadcastData::<G>::decrypt_owned(&bin, &shared_key);
-            assert!(res.is_ok());
-            let bdata2 = res.unwrap();
-            assert_eq!(bdata.message_generator, bdata.message_generator);
-            assert_eq!(bdata.blinder_generator, bdata2.blinder_generator);
-            assert_eq!(
-                bdata.pedersen_commitments[0],
-                bdata2.pedersen_commitments[0]
-            );
-            assert_eq!(
-                bdata.pedersen_commitments[1],
-                bdata2.pedersen_commitments[1]
-            );
-
-            r1bdata.push(bdata);
-            r1pdata.push(pdata);
+    fn next_round<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
+        participants: &mut [SecretParticipant<G>],
+    ) -> Vec<RoundOutputGenerator<G>> {
+        let mut round_generators = Vec::with_capacity(participants.len());
+        for participant in participants {
+            let generator = participant.run().unwrap();
+            round_generators.push(generator);
         }
+        round_generators
+    }
 
-        let mut r2bdata = BTreeMap::<usize, Round2EchoBroadcastData>::new();
-        r2bdata.insert(
-            1,
-            participants[0]
-                .round2(
-                    maplit::btreemap! {
-                        2 => r1bdata[1].clone(),
-                        3 => r1bdata[2].clone(),
-                    },
-                    maplit::btreemap! {
-                        2 => r1pdata[1][&1].clone(),
-                        3 => r1pdata[2][&1].clone()
-                    },
-                )
-                .unwrap(),
-        );
-        r2bdata.insert(
-            2,
-            participants[1]
-                .round2(
-                    maplit::btreemap! {
-                        1 => r1bdata[0].clone(),
-                        3 => r1bdata[2].clone(),
-                    },
-                    maplit::btreemap! {
-                        1 => r1pdata[0][&2].clone(),
-                        3 => r1pdata[2][&2].clone(),
-                    },
-                )
-                .unwrap(),
-        );
-        r2bdata.insert(
-            3,
-            participants[2]
-                .round2(
-                    maplit::btreemap! {
-                        1 => r1bdata[0].clone(),
-                        2 => r1bdata[1].clone(),
-                    },
-                    maplit::btreemap! {
-                        1 => r1pdata[0][&3].clone(),
-                        2 => r1pdata[1][&3].clone(),
-                    },
-                )
-                .unwrap(),
-        );
-
-        let json = serde_json::to_string(&r2bdata).unwrap();
-        let res = serde_json::from_str::<BTreeMap<usize, Round2EchoBroadcastData>>(&json);
-        assert!(res.is_ok());
-        let r2bdata2 = res.unwrap();
-        assert_eq!(
-            r2bdata[&1].valid_participant_ids,
-            r2bdata2[&1].valid_participant_ids
-        );
-
-        let bin = serde_bare::to_vec(&r2bdata).unwrap();
-        let res = serde_bare::from_slice::<BTreeMap<usize, Round2EchoBroadcastData>>(&bin);
-        assert!(res.is_ok());
-        let r2bdata2 = res.unwrap();
-        assert_eq!(
-            r2bdata[&1].valid_participant_ids,
-            r2bdata2[&1].valid_participant_ids
-        );
-
-        // We explicitly zeroize the P2P secrets here as we have to assert that it's zeroized.
-        // IRL we don't have to manually zeroize it as it will be automatically dropped as we've implemented the ZeroizeOnDrop trait
-        for i in 0..3 {
-            for j in 1..4 {
-                r1pdata[i].get_mut(&j).map(|val| val.zeroize());
-                if j != i + 1 {
-                    assert!(r1pdata[i].get(&j).unwrap().secret_share.is_empty());
-                    assert!(r1pdata[i].get(&j).unwrap().blind_share.is_empty());
+    fn receive<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
+        participants: &mut [SecretParticipant<G>],
+        round_generators: Vec<RoundOutputGenerator<G>>,
+    ) {
+        for round_generator in &round_generators {
+            for ParticipantRoundOutput {
+                dst_ordinal: ordinal,
+                dst_id: id,
+                data,
+                ..
+            } in round_generator.iter()
+            {
+                if let Some(participant) = participants.get_mut(ordinal) {
+                    assert_eq!(participant.ordinal, ordinal);
+                    assert_eq!(participant.id, id);
+                    let res = participant.receive(data.as_slice());
+                    assert!(res.is_ok());
                 }
             }
         }
-
-        let mut r3bdata = BTreeMap::<usize, Round3BroadcastData<G>>::new();
-        r3bdata.insert(1, participants[0].round3(&r2bdata).unwrap());
-        r3bdata.insert(2, participants[1].round3(&r2bdata).unwrap());
-        r3bdata.insert(3, participants[2].round3(&r2bdata).unwrap());
-
-        let json = serde_json::to_string(&r3bdata).unwrap();
-        let res = serde_json::from_str::<BTreeMap<usize, Round3BroadcastData<G>>>(&json);
-        assert!(res.is_ok());
-        let r3bdata2 = res.unwrap();
-        assert_eq!(
-            r3bdata.get(&1).unwrap().commitments,
-            r3bdata2.get(&1).unwrap().commitments
-        );
-        assert_eq!(
-            r3bdata.get(&2).unwrap().commitments,
-            r3bdata2.get(&2).unwrap().commitments
-        );
-        assert_eq!(
-            r3bdata.get(&3).unwrap().commitments,
-            r3bdata2.get(&3).unwrap().commitments
-        );
-
-        let bin = serde_bare::to_vec(&r3bdata).unwrap();
-        let res = serde_bare::from_slice::<BTreeMap<usize, Round3BroadcastData<G>>>(&bin);
-        assert!(res.is_ok());
-        let r3bdata2 = res.unwrap();
-        assert_eq!(
-            r3bdata.get(&1).unwrap().commitments,
-            r3bdata2.get(&1).unwrap().commitments
-        );
-        assert_eq!(
-            r3bdata.get(&2).unwrap().commitments,
-            r3bdata2.get(&2).unwrap().commitments
-        );
-        assert_eq!(
-            r3bdata.get(&3).unwrap().commitments,
-            r3bdata2.get(&3).unwrap().commitments
-        );
-
-        let mut r4bdata = BTreeMap::<usize, Round4EchoBroadcastData<G>>::new();
-        r4bdata.insert(1, participants[0].round4(&r3bdata).unwrap());
-        r4bdata.insert(2, participants[1].round4(&r3bdata).unwrap());
-        r4bdata.insert(3, participants[2].round4(&r3bdata).unwrap());
-
-        let json = serde_json::to_string(&r4bdata).unwrap();
-        let res = serde_json::from_str::<BTreeMap<usize, Round4EchoBroadcastData<G>>>(&json);
-        assert!(res.is_ok());
-        let r4bdata2 = res.unwrap();
-        assert_eq!(
-            r4bdata.get(&1).unwrap().public_key,
-            r4bdata2.get(&1).unwrap().public_key
-        );
-        assert_eq!(
-            r4bdata.get(&2).unwrap().public_key,
-            r4bdata2.get(&2).unwrap().public_key
-        );
-        assert_eq!(
-            r4bdata.get(&3).unwrap().public_key,
-            r4bdata2.get(&3).unwrap().public_key
-        );
-
-        let bin = serde_bare::to_vec(&r4bdata).unwrap();
-        let res = serde_bare::from_slice::<BTreeMap<usize, Round4EchoBroadcastData<G>>>(&bin);
-        assert!(res.is_ok());
-        let r4bdata2 = res.unwrap();
-        assert_eq!(
-            r4bdata.get(&1).unwrap().public_key,
-            r4bdata2.get(&1).unwrap().public_key
-        );
-        assert_eq!(
-            r4bdata.get(&2).unwrap().public_key,
-            r4bdata2.get(&2).unwrap().public_key
-        );
-        assert_eq!(
-            r4bdata.get(&3).unwrap().public_key,
-            r4bdata2.get(&3).unwrap().public_key
-        );
     }
 }

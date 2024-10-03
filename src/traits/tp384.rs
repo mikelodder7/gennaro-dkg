@@ -17,17 +17,17 @@ impl GroupHasher for ProjectivePoint {
     }
 }
 
-impl SumOfProducts for ProjectivePoint {
-    fn sum_of_products(group: &[Self], field: &[Self::Scalar]) -> Self {
-        sum_of_products_pippenger::<Scalar, ProjectivePoint, 6>(group, field)
-    }
-}
-
-impl AsLimbs<6> for Scalar {
-    fn as_limbs(&self) -> [u64; 6] {
-        scalar_primitive_to_limbs::<6, 12, NistP384>(*self)
-    }
-}
+// impl SumOfProducts for ProjectivePoint {
+//     fn sum_of_products(group: &[Self], field: &[Self::Scalar]) -> Self {
+//         sum_of_products_pippenger::<Scalar, ProjectivePoint, 6>(group, field)
+//     }
+// }
+//
+// impl AsLimbs<6> for Scalar {
+//     fn as_limbs(&self) -> [u64; 6] {
+//         scalar_primitive_to_limbs::<6, 12, NistP384>(*self)
+//     }
+// }
 
 impl ReduceWide<96> for Scalar {
     fn reduce_wide(okm: &[u8; 96]) -> Self {

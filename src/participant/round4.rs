@@ -1,4 +1,6 @@
 use super::*;
+use crate::Round4OutputGenerator;
+use vsss_rs::IdentifierPrimeField;
 
 impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEncoding + Default>
     Participant<I, G>
@@ -20,48 +22,53 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
     pub fn round4(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
         if !self.round4_ready() {
             return Err(Error::RoundError(
-                Round::Four.into(),
+                Round::Four,
                 format!("round not ready, haven't received enough data from other participants. Need {} more", self.threshold - self.received_round3_data.len()),
             ));
         }
+        let mut secret_share = G::Scalar::ZERO;
+        let mut public_key = G::identity();
+        let secret_shares = self.components.secret_shares();
+        let og_secret = *secret_shares[self.ordinal].value;
+        self.valid_participant_ids.clear();
 
-        self.public_key = self.feldman_verifier_set[0];
+        for (ordinal, round3) in &self.received_round3_data {
+            public_key += *round3.feldman_commitments[0];
+            let r1data = &self.received_round1_data[ordinal];
+            debug_assert_eq!(r1data.secret_share.identifier, self.id);
+            secret_share += *r1data.secret_share.value;
+        }
 
-        for (id, bdata) in &self.received_round3_data {
-            self.public_key += bdata.feldman_commitments[0];
+        if public_key.is_identity().into() {
+            return Err(Error::RoundError(
+                Round::Four,
+                "The resulting public key is invalid".to_string(),
+            ));
+        }
 
-            // Double-check the blinder shares in case the user wants to use them
-            let blinder_verifiers = self.received_round1_data[id]
-                .pedersen_commitments
-                .iter()
-                .zip(bdata.feldman_commitments.iter())
-                .map(|(b, c)| *b - *c)
-                .collect::<Vec<G>>();
-
-            let blind_share = self.received_round1_data[id].blind_share;
-            let rhs = <G as SumOfProducts>::sum_of_products(&blinder_verifiers, &self.powers_of_i);
-            let lhs = self.blinder_generator * blind_share;
-
-            if !bool::from((rhs - lhs).is_identity()) {
-                return Err(Error::RoundError(
-                    4,
-                    "The blind share does not verify with the given commitments".to_string(),
-                ));
-            }
+        if secret_share == og_secret {
+            return Err(Error::RoundError(
+                Round::Four,
+                "The resulting secret key share is invalid".to_string(),
+            ));
         }
 
         for round3 in self.received_round3_data.values() {
             round3.add_to_transcript(&mut self.transcript);
+            self.valid_participant_ids
+                .insert(round3.sender_ordinal, round3.sender_id);
         }
-
-        self.blind_key -= self.public_key;
-        self.round = Round::Five;
-        self.transcript
-            .append_message(b"public key", self.public_key.to_bytes().as_ref());
 
         let mut transcript_hash = [0u8; 32];
         self.transcript
             .challenge_bytes(b"protocol transcript", &mut transcript_hash);
+
+        self.public_key = ValueGroup(public_key);
+        self.secret_share =
+            SecretShare::with_identifier_and_value(self.id, IdentifierPrimeField(secret_share));
+        self.round = Round::Five;
+        self.transcript
+            .append_message(b"public key", self.public_key.to_bytes().as_ref());
 
         self.received_round4_data.insert(
             self.ordinal,
@@ -84,17 +91,17 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
     pub(crate) fn receive_round4data(&mut self, data: Round4Data<G>) -> DkgResult<()> {
         if self.round != Round::Five {
             return Err(Error::RoundError(
-                5,
+                Round::Four,
                 "Invalid round payload received".to_string(),
             ));
         }
         if self.received_round4_data.contains_key(&data.sender_ordinal) {
             return Err(Error::RoundError(
-                5,
+                Round::Four,
                 "Sender has already sent data".to_string(),
             ));
         }
-        self.check_sending_participant_id(4, data.sender_ordinal, data.sender_id)?;
+        self.check_sending_participant_id(Round::Four, data.sender_ordinal, data.sender_id)?;
         let self_round4_data = self.received_round4_data[&self.ordinal];
         if !bool::from(
             self_round4_data
@@ -102,18 +109,17 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
                 .ct_eq(&data.transcript_hash),
         ) {
             return Err(Error::RoundError(
-                5,
+                Round::Four,
                 "Sender's transcript is incorrect".to_string(),
             ));
         }
-        if self_round4_data.public_key == data.public_key {
+        if self_round4_data.public_key != data.public_key {
             return Err(Error::RoundError(
-                5,
+                Round::Four,
                 "Sender has invalid public key".to_string(),
             ));
         }
-        self.received_round4_data
-            .insert(data.sender_ordinal, data.clone());
+        self.received_round4_data.insert(data.sender_ordinal, data);
         Ok(())
     }
 }

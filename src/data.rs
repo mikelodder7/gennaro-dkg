@@ -1,11 +1,15 @@
-use crate::serdes::*;
-use crate::{GroupHasher, SumOfProducts};
-use blsful::inner_types::GroupEncoding;
-use elliptic_curve::{Field, PrimeField};
+use crate::{GroupHasher, SecretShare};
+use elliptic_curve::{group::GroupEncoding, PrimeField};
+use elliptic_curve_tools::*;
 use merlin::Transcript;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fmt::{self, Display, Formatter};
+use std::marker::PhantomData;
+use std::{
+    fmt::{self, Display, Formatter},
+    iter::Iterator,
+};
+use vsss_rs::*;
 
 /// Valid rounds
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -22,6 +26,51 @@ pub enum Round {
     Four,
     /// Fifth round
     Five,
+}
+
+impl Round {
+    /// Return a round iterator starting at this round
+    pub fn iter(&self) -> RoundIter {
+        RoundIter {
+            current: *self,
+            end: Round::Five,
+        }
+    }
+
+    /// Return a range of rounds that begin with `start` and end with `stop` inclusively.
+    pub fn range(start: Round, stop: Round) -> RoundIter {
+        RoundIter {
+            current: start,
+            end: stop,
+        }
+    }
+}
+
+/// The round iterator
+pub struct RoundIter {
+    current: Round,
+    end: Round,
+}
+
+impl Iterator for RoundIter {
+    type Item = Round;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current <= self.end {
+            let current = self.current;
+            self.current = match self.current {
+                Round::Zero => Round::One,
+                Round::One => Round::Two,
+                Round::Two => Round::Three,
+                Round::Three => Round::Four,
+                Round::Four => Round::Five,
+                Round::Five => Round::Five,
+            };
+            Some(current)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Round {
@@ -113,6 +162,31 @@ macro_rules! impl_participant_to_int {
 
 impl_participant_to_int!(u8, u16, u32, u128, usize);
 
+/// The round output for a participant
+#[derive(Debug, Clone)]
+pub struct ParticipantRoundOutput<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
+    /// The participant ordinal to where the data should be sent
+    pub dst_ordinal: usize,
+    /// The participant ID to where the data should be sent
+    pub dst_id: IdentifierPrimeField<G::Scalar>,
+    /// The data to send
+    pub data: Vec<u8>,
+    /// Marker for the group
+    pub _marker: PhantomData<G>,
+}
+
+impl<G: GroupHasher + GroupEncoding + SumOfProducts + Default> ParticipantRoundOutput<G> {
+    /// Create a new participant round output
+    pub fn new(dst_ordinal: usize, dst_id: IdentifierPrimeField<G::Scalar>, data: Vec<u8>) -> Self {
+        Self {
+            dst_ordinal,
+            dst_id,
+            data,
+            _marker: PhantomData,
+        }
+    }
+}
+
 /// The round output generator that callers use to get the data to send to
 /// other participants. This handles both broadcast and peer 2 peer data.
 #[derive(Debug, Clone)]
@@ -135,7 +209,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
     /// Iterate over the data to send to other participants
     /// The output is a triplet that is the caller sends the data to participant
     /// at ordinal index with id.
-    pub fn iter(&self) -> Box<dyn Iterator<Item = (usize, G::Scalar, Vec<u8>)> + '_> {
+    pub fn iter(&self) -> Box<dyn Iterator<Item = ParticipantRoundOutput<G>> + '_> {
         match self {
             Self::Round0(data) => {
                 let round0_output_data: Round0Data<G> = Round0Data {
@@ -148,11 +222,12 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 let mut output =
                     postcard::to_stdvec(&round0_output_data).expect("to serialize into a bytes");
                 output.insert(0, Round::Zero as u8);
-                Box::new(
-                    data.participant_ids
-                        .iter()
-                        .map(move |(index, id)| (*index, *id, output.clone())),
-                )
+                Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
+                    if *index == data.sender_ordinal {
+                        return None;
+                    }
+                    Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
+                }))
             }
             Self::Round1(data) => {
                 let mut round1_output_data: Round1Data<G> = Round1Data {
@@ -161,16 +236,21 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     message_generator: data.message_generator,
                     blinder_generator: data.blinder_generator,
                     pedersen_commitments: data.pedersen_commitments.clone(),
-                    secret_share: G::Scalar::ZERO,
-                    blind_share: G::Scalar::ZERO,
+                    secret_share: SecretShare::<G::Scalar>::default(),
+                    blind_share: SecretShare::<G::Scalar>::default(),
                 };
-                Box::new(data.participant_ids.iter().map(move |(index, id)| {
+                Box::new(data.participant_ids.iter().filter_map(move |(index, &id)| {
+                    if *index == data.sender_ordinal {
+                        return None;
+                    }
+                    debug_assert_eq!(data.secret_share[index].identifier, id);
+                    debug_assert_eq!(data.blind_share[index].identifier, id);
                     round1_output_data.secret_share = data.secret_share[index];
                     round1_output_data.blind_share = data.blind_share[index];
                     let mut output = postcard::to_stdvec(&round1_output_data)
                         .expect("to serialize into a bytes");
                     output.insert(0, Round::One as u8);
-                    (*index, *id, output)
+                    Some(ParticipantRoundOutput::new(*index, id, output))
                 }))
             }
             Self::Round2(data) => {
@@ -182,26 +262,29 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 let mut output =
                     postcard::to_stdvec(&round2_output_data).expect("to serialize into a bytes");
                 output.insert(0, Round::Two as u8);
-                Box::new(
-                    data.participant_ids
-                        .iter()
-                        .map(move |(index, id)| (*index, *id, output.clone())),
-                )
+                Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
+                    if *index == data.sender_ordinal {
+                        return None;
+                    }
+                    Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
+                }))
             }
             Self::Round3(data) => {
                 let round3_output_data: Round3Data<G> = Round3Data {
                     sender_ordinal: data.sender_ordinal,
                     sender_id: data.sender_id,
                     feldman_commitments: data.feldman_commitments.clone(),
+                    valid_participant_ids: data.valid_participant_ids.clone(),
                 };
                 let mut output =
                     postcard::to_stdvec(&round3_output_data).expect("to serialize into a bytes");
                 output.insert(0, Round::Three as u8);
-                Box::new(
-                    data.participant_ids
-                        .iter()
-                        .map(move |(index, id)| (*index, *id, output.clone())),
-                )
+                Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
+                    if *index == data.sender_ordinal {
+                        return None;
+                    }
+                    Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
+                }))
             }
             Self::Round4(data) => {
                 let round4_output_data: Round4Data<G> = Round4Data {
@@ -213,20 +296,22 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                 let mut output =
                     postcard::to_stdvec(&round4_output_data).expect("to serialize into a bytes");
                 output.insert(0, Round::Four as u8);
-                Box::new(
-                    data.participant_ids
-                        .iter()
-                        .map(move |(index, id)| (*index, *id, output.clone())),
-                )
+                Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
+                    if *index == data.sender_ordinal {
+                        return None;
+                    }
+                    Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
+                }))
             }
             Self::Round5(data) => {
                 let mut output = data.public_key.to_bytes().as_ref().to_vec();
                 output.insert(0, Round::Five as u8);
-                Box::new(
-                    data.participant_ids
-                        .iter()
-                        .map(move |(index, id)| (*index, *id, output.clone())),
-                )
+                Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
+                    if *index == data.sender_ordinal {
+                        return None;
+                    }
+                    Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
+                }))
             }
         }
     }
@@ -236,13 +321,13 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
 #[derive(Debug, Clone)]
 pub struct Round0OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The participant IDs to send to
-    pub(crate) participant_ids: BTreeMap<usize, G::Scalar>,
+    pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's participant type
     pub(crate) sender_type: ParticipantType,
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
-    pub(crate) sender_id: G::Scalar,
+    pub(crate) sender_id: IdentifierPrimeField<G::Scalar>,
     /// The commitment to the pedersen verifier set
     pub(crate) pedersen_commitment_hash: [u8; 32],
     /// The commitment to the feldman verifier set
@@ -253,62 +338,64 @@ pub struct Round0OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding 
 #[derive(Debug, Clone)]
 pub struct Round1OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The participant IDs to send to
-    pub(crate) participant_ids: BTreeMap<usize, G::Scalar>,
+    pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
-    pub(crate) sender_id: G::Scalar,
+    pub(crate) sender_id: IdentifierPrimeField<G::Scalar>,
     /// The broadcast data
     pub(crate) message_generator: G,
     /// The broadcast data
     pub(crate) blinder_generator: G,
     /// The broadcast data
-    pub(crate) pedersen_commitments: Vec<G>,
+    pub(crate) pedersen_commitments: Vec<ShareVerifierGroup<G>>,
     /// The peer 2 peer data based on the participant ordinal index
-    pub(crate) secret_share: BTreeMap<usize, G::Scalar>,
+    pub(crate) secret_share: BTreeMap<usize, SecretShare<G::Scalar>>,
     /// The peer 2 peer data based on the participant ordinal index
-    pub(crate) blind_share: BTreeMap<usize, G::Scalar>,
+    pub(crate) blind_share: BTreeMap<usize, SecretShare<G::Scalar>>,
 }
 
 /// The output generator for round 2
 #[derive(Debug, Clone)]
 pub struct Round2OutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The participant IDs to send to
-    pub(crate) participant_ids: BTreeMap<usize, G::Scalar>,
+    pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
-    pub(crate) sender_id: G::Scalar,
+    pub(crate) sender_id: IdentifierPrimeField<G::Scalar>,
     /// The list of remaining valid participant IDs
-    pub(crate) valid_participant_ids: BTreeMap<usize, G::Scalar>,
+    pub(crate) valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
 }
 
 /// The output generator for round 3
 #[derive(Debug, Clone)]
 pub struct Round3OutputGenerator<G: GroupHasher + GroupEncoding + Default> {
     /// The participant IDs to send to
-    pub(crate) participant_ids: BTreeMap<usize, G::Scalar>,
+    pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
-    pub(crate) sender_id: G::Scalar,
+    pub(crate) sender_id: IdentifierPrimeField<G::Scalar>,
     /// The feldman commitments
-    pub(crate) feldman_commitments: Vec<G>,
+    pub(crate) feldman_commitments: Vec<ShareVerifierGroup<G>>,
+    /// The list of remaining valid participant IDs
+    pub(crate) valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
 }
 
 /// The output generator for round 4
 #[derive(Debug, Clone)]
 pub struct Round4OutputGenerator<G: GroupHasher + GroupEncoding + Default> {
     /// The participant IDs to send to
-    pub(crate) participant_ids: BTreeMap<usize, G::Scalar>,
+    pub(crate) participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
-    pub(crate) sender_id: G::Scalar,
+    pub(crate) sender_id: IdentifierPrimeField<G::Scalar>,
     /// The transcript hash of all messages received
     pub(crate) transcript_hash: [u8; 32],
     /// The computed public key
-    pub(crate) public_key: G,
+    pub(crate) public_key: ValueGroup<G>,
 }
 
 /// Broadcast data for Round 0
@@ -317,8 +404,7 @@ pub struct Round0Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     /// The sender's ordinal index
     pub(crate) sender_ordinal: usize,
     /// The sender's ID
-    #[serde(with = "prime_field")]
-    pub(crate) sender_id: G::Scalar,
+    pub(crate) sender_id: IdentifierPrimeField<G::Scalar>,
     /// The sender's participant type
     pub(crate) sender_type: ParticipantType,
     /// A commitment to the pedersen verifier set
@@ -352,23 +438,27 @@ pub struct Round1Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     /// The sender's ordinal index
     pub sender_ordinal: usize,
     /// The sender's ID
-    #[serde(with = "prime_field")]
-    pub sender_id: G::Scalar,
+    #[serde(bound(serialize = "IdentifierPrimeField<G::Scalar>: Serialize"))]
+    #[serde(bound(deserialize = "IdentifierPrimeField<G::Scalar>: Deserialize<'de>"))]
+    pub sender_id: IdentifierPrimeField<G::Scalar>,
     /// The broadcast data
     #[serde(with = "group")]
     pub message_generator: G,
     /// The broadcast data
     #[serde(with = "group")]
     pub blinder_generator: G,
-    #[serde(with = "group_vec")]
     /// The broadcast data
-    pub pedersen_commitments: Vec<G>,
-    #[serde(with = "prime_field")]
+    #[serde(bound(serialize = "ShareVerifierGroup<G>: Serialize"))]
+    #[serde(bound(deserialize = "ShareVerifierGroup<G>: Deserialize<'de>"))]
+    pub pedersen_commitments: Vec<ShareVerifierGroup<G>>,
     /// The peer 2 peer data
-    pub secret_share: G::Scalar,
+    #[serde(bound(serialize = "SecretShare<G::Scalar>: Serialize"))]
+    #[serde(bound(deserialize = "SecretShare<G::Scalar>: Deserialize<'de>"))]
+    pub secret_share: SecretShare<G::Scalar>,
     /// The peer 2 peer data
-    #[serde(with = "prime_field")]
-    pub blind_share: G::Scalar,
+    #[serde(bound(serialize = "SecretShare<G::Scalar>: Serialize"))]
+    #[serde(bound(deserialize = "SecretShare<G::Scalar>: Deserialize<'de>"))]
+    pub blind_share: SecretShare<G::Scalar>,
 }
 
 #[cfg(test)]
@@ -404,11 +494,9 @@ pub struct Round2Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     /// The sender's ordinal index
     pub sender_ordinal: usize,
     /// The sender's ID
-    #[serde(with = "prime_field")]
-    pub sender_id: G::Scalar,
+    pub sender_id: IdentifierPrimeField<G::Scalar>,
     /// The list of remaining valid participant IDs
-    #[serde(with = "prime_field_map")]
-    pub valid_participant_ids: BTreeMap<usize, G::Scalar>,
+    pub valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
 }
 
 #[cfg(test)]
@@ -436,11 +524,15 @@ pub struct Round3Data<G: GroupHasher + GroupEncoding + Default> {
     /// The sender's ordinal index
     pub sender_ordinal: usize,
     /// The sender's ID
-    #[serde(with = "prime_field")]
-    pub sender_id: G::Scalar,
+    #[serde(bound(serialize = "IdentifierPrimeField<G::Scalar>: Serialize"))]
+    #[serde(bound(deserialize = "IdentifierPrimeField<G::Scalar>: Deserialize<'de>"))]
+    pub sender_id: IdentifierPrimeField<G::Scalar>,
     /// The feldman commitments
-    #[serde(with = "group_vec")]
-    pub feldman_commitments: Vec<G>,
+    #[serde(bound(serialize = "ShareVerifierGroup<G>: Serialize"))]
+    #[serde(bound(deserialize = "ShareVerifierGroup<G>: Deserialize<'de>"))]
+    pub feldman_commitments: Vec<ShareVerifierGroup<G>>,
+    /// The list of remaining valid participant IDs
+    pub valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
 }
 
 #[cfg(test)]
@@ -459,6 +551,10 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round3Data<G> {
             transcript.append_u64(b"feldman commitment_index", i as u64);
             transcript.append_message(b"feldman commitment_value", commitment.to_bytes().as_ref());
         }
+        for (ordinal, id) in &self.valid_participant_ids {
+            transcript.append_u64(b"valid participant ordinal", *ordinal as u64);
+            transcript.append_message(b"valid participant id", id.to_repr().as_ref());
+        }
     }
 }
 
@@ -468,13 +564,15 @@ pub struct Round4Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     /// The sender's ordinal index
     pub sender_ordinal: usize,
     /// The sender's ID
-    #[serde(with = "prime_field")]
-    pub sender_id: G::Scalar,
+    #[serde(bound(serialize = "IdentifierPrimeField<G::Scalar>: Serialize"))]
+    #[serde(bound(deserialize = "IdentifierPrimeField<G::Scalar>: Deserialize<'de>"))]
+    pub sender_id: IdentifierPrimeField<G::Scalar>,
     /// The transcript hash of all messages received
     pub transcript_hash: [u8; 32],
     /// The computed public key
-    #[serde(with = "group")]
-    pub public_key: G,
+    #[serde(bound(serialize = "ValueGroup<G>: Serialize"))]
+    #[serde(bound(deserialize = "ValueGroup<G>: Deserialize<'de>"))]
+    pub public_key: ValueGroup<G>,
 }
 
 #[cfg(test)]

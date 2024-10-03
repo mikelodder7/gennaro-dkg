@@ -4,26 +4,43 @@ mod round2;
 mod round3;
 mod round4;
 
-use std::collections::{BTreeMap, HashSet};
 use std::{
+    collections::BTreeMap,
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
 };
 
-use crate::*;
-use elliptic_curve::subtle::ConstantTimeEq;
-use elliptic_curve::{group::GroupEncoding, Field, Group};
+use crate::{
+    DkgResult, Error, GroupHasher, Parameters, ParticipantType, Round, Round0Data, Round1Data,
+    Round2Data, Round3Data, Round4Data, RoundOutputGenerator,
+};
+use elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField};
+use elliptic_curve_tools::*;
 use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
-use vsss_rs::subtle::Choice;
-use vsss_rs::{ParticipantNumberGenerator, Polynomial};
+use vsss_rs::{
+    pedersen::PedersenOptions,
+    subtle::{Choice, ConstantTimeEq},
+    DefaultShare, FeldmanVerifierSet, IdentifierPrimeField, Pedersen, PedersenResult,
+    PedersenVerifierSet, Share, ShareElement, ShareVerifierGroup, StdPedersenResult, StdVsss,
+    ValueGroup, ValuePrimeField, VecFeldmanVerifierSet, VecPedersenVerifierSet,
+};
 
 /// Secret Participant type
 pub type SecretParticipant<G> = Participant<SecretParticipantImpl<G>, G>;
 
 /// Refresh Participant type
 pub type RefreshParticipant<G> = Participant<RefreshParticipantImpl<G>, G>;
+
+/// The inner share representation
+pub type SecretShare<F> = DefaultShare<IdentifierPrimeField<F>, IdentifierPrimeField<F>>;
+
+/// The inner feldman share verifiers
+pub type FeldmanShareVerifier<G> = ShareVerifierGroup<G>;
+
+/// The inner pedersen share result
+pub type InnerPedersenResult<F, G> = StdPedersenResult<SecretShare<F>, ShareVerifierGroup<G>>;
 
 /// Participant implementation
 pub trait ParticipantImpl<G>
@@ -33,7 +50,7 @@ where
     /// Get the participant type
     fn get_type(&self) -> ParticipantType;
     /// Get the participants secret
-    fn secret(rng: impl RngCore + CryptoRng) -> G::Scalar;
+    fn random_value(rng: impl RngCore + CryptoRng) -> G::Scalar;
     /// Check the feldman verifier at position 0.
     /// During a new or update key gen, this value is not the identity
     /// during a refresh, it must be identity
@@ -51,31 +68,27 @@ where
     I: ParticipantImpl<G> + Default,
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 {
-    ordinal: usize,
-    id: G::Scalar,
-    threshold: usize,
-    limit: usize,
-    round: Round,
-    message_generator: G,
-    blinder_generator: G,
-    secret_share: G::Scalar,
-    secret_shares: Vec<(G::Scalar, G::Scalar)>,
-    blind_share: G::Scalar,
-    blinder_shares: Vec<(G::Scalar, G::Scalar)>,
-    feldman_verifier_set: Vec<G>,
-    pedersen_verifier_set: Vec<G>,
-    public_key: G,
-    blind_key: G,
-    powers_of_i: Vec<G::Scalar>,
-    received_round0_data: BTreeMap<usize, Round0Data<G>>,
-    received_round1_data: BTreeMap<usize, Round1Data<G>>,
-    received_round2_data: BTreeMap<usize, Round2Data<G>>,
-    received_round3_data: BTreeMap<usize, Round3Data<G>>,
-    received_round4_data: BTreeMap<usize, Round4Data<G>>,
-    valid_participant_ids: BTreeMap<usize, G::Scalar>,
-    all_participant_ids: BTreeMap<usize, G::Scalar>,
-    participant_impl: I,
-    transcript: Transcript,
+    pub(crate) ordinal: usize,
+    pub(crate) id: IdentifierPrimeField<G::Scalar>,
+    pub(crate) threshold: usize,
+    pub(crate) limit: usize,
+    pub(crate) round: Round,
+    pub(crate) components: InnerPedersenResult<G::Scalar, G>,
+    pub(crate) secret_share: SecretShare<G::Scalar>,
+    pub(crate) blind_share: SecretShare<G::Scalar>,
+    pub(crate) message_generator: G,
+    pub(crate) blinder_generator: G,
+    pub(crate) public_key: ValueGroup<G>,
+    pub(crate) powers_of_i: Vec<G::Scalar>,
+    pub(crate) received_round0_data: BTreeMap<usize, Round0Data<G>>,
+    pub(crate) received_round1_data: BTreeMap<usize, Round1Data<G>>,
+    pub(crate) received_round2_data: BTreeMap<usize, Round2Data<G>>,
+    pub(crate) received_round3_data: BTreeMap<usize, Round3Data<G>>,
+    pub(crate) received_round4_data: BTreeMap<usize, Round4Data<G>>,
+    pub(crate) valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
+    pub(crate) all_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
+    pub(crate) participant_impl: I,
+    pub(crate) transcript: Transcript,
 }
 
 impl<I, G> Debug for Participant<I, G>
@@ -85,20 +98,16 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Participant")
+            .field("ordinal", &self.ordinal)
             .field("id", &self.id)
             .field("threshold", &self.threshold)
             .field("limit", &self.limit)
             .field("round", &self.round)
-            .field("message_generator", &self.message_generator)
-            .field("blinder_generator", &self.blinder_generator)
+            .field("components", &self.components)
             .field("secret_share", &self.secret_share)
-            .field("secret_shares", &self.secret_shares)
             .field("blind_share", &self.blind_share)
-            .field("blinder_shares", &self.blinder_shares)
-            .field("feldman_verifier_set", &self.feldman_verifier_set)
-            .field("pedersen_verifier_set", &self.pedersen_verifier_set)
             .field("public_key", &self.public_key)
-            .field("blind_key", &self.blind_key)
+            .field("powers_of_i", &self.powers_of_i)
             .field("received_round0_data", &self.received_round0_data)
             .field("received_round1_data", &self.received_round1_data)
             .field("received_round2_data", &self.received_round2_data)
@@ -116,36 +125,43 @@ where
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 {
     /// Create a new participant to generate a new key share
-    pub fn new<P: ParticipantNumberGenerator<G::Scalar> + Default>(
-        id: G::Scalar,
-        parameters: &Parameters<G, P>,
-    ) -> DkgResult<Self> {
+    pub fn new(id: IdentifierPrimeField<G::Scalar>, parameters: &Parameters<G>) -> DkgResult<Self> {
         let rng = rand_core::OsRng;
-        let secret = I::secret(rng);
+        let secret = I::random_value(rng);
         let blinder = G::Scalar::random(rng);
-        Self::initialize(id, parameters, secret, blinder)
+        Self::initialize(
+            id,
+            parameters,
+            IdentifierPrimeField(secret),
+            IdentifierPrimeField(blinder),
+        )
     }
 
     /// Create a new participant with an existing secret.
     ///
     /// This allows the polynomial to be updated versus refreshing the shares.
-    pub fn with_secret<P: ParticipantNumberGenerator<G::Scalar> + Default>(
-        id: G::Scalar,
-        parameters: &Parameters<G, P>,
-        share: G::Scalar,
-        shares_ids: &[G::Scalar],
+    pub fn with_secret(
+        new_identifier: IdentifierPrimeField<G::Scalar>,
+        old_share: &SecretShare<G::Scalar>,
+        parameters: &Parameters<G>,
+        shares_ids: &[IdentifierPrimeField<G::Scalar>],
     ) -> DkgResult<Self> {
         let mut rng = rand_core::OsRng;
         let blinder = G::Scalar::random(&mut rng);
-        let secret = share * Self::lagrange(share, shares_ids);
-        Self::initialize(id, parameters, secret, blinder)
+        let secret = *old_share.value * *Self::lagrange(old_share, shares_ids);
+        Self::initialize(
+            new_identifier,
+            parameters,
+            IdentifierPrimeField(secret),
+            IdentifierPrimeField(blinder),
+        )
     }
 
-    fn initialize<P: ParticipantNumberGenerator<G::Scalar> + Default>(
-        id: G::Scalar,
-        parameters: &Parameters<G, P>,
-        secret: G::Scalar,
-        blinder: G::Scalar,
+    fn initialize(
+        id: IdentifierPrimeField<G::Scalar>,
+        parameters: &Parameters<G>,
+        secret: ValuePrimeField<G::Scalar>,
+        blinder: ValuePrimeField<G::Scalar>,
     ) -> DkgResult<Self> {
         let rng = rand_core::OsRng;
 
@@ -169,103 +185,93 @@ where
                 "Invalid blinder generator".to_string(),
             ));
         }
-
-        let mut secret_polynomial =
-            <Vec<G::Scalar> as Polynomial<G::Scalar>>::create(parameters.threshold);
-        secret_polynomial.fill(secret, rng, parameters.limit)?;
-        let mut blinder_polynomial =
-            <Vec<G::Scalar> as Polynomial<G::Scalar>>::create(parameters.threshold);
-        blinder_polynomial.fill(blinder, rng, parameters.limit)?;
-
-        let mut pedersen_verifier_set = vec![G::identity(); parameters.threshold];
-        let mut feldman_verifier_set = vec![G::identity(); parameters.threshold];
-
-        for ((pedersen, feldman), (secret_coefficient, blinder_coefficient)) in
-            pedersen_verifier_set
-                .iter_mut()
-                .zip(feldman_verifier_set.iter_mut())
-                .zip(secret_polynomial.iter().zip(blinder_polynomial.iter()))
-        {
-            *feldman = parameters.message_generator * secret_coefficient;
-            *pedersen = *feldman + parameters.blinder_generator * blinder_coefficient;
-        }
-
-        let mut secret_shares = vec![(G::Scalar::ZERO, G::Scalar::ZERO); parameters.limit];
-        let mut blinder_shares = vec![(G::Scalar::ZERO, G::Scalar::ZERO); parameters.limit];
-
-        let mut all_participant_ids = BTreeMap::new();
-        let mut dup_check = HashSet::new();
-        let mut ordinal = 0;
-        for (i, (secret_share, blinder_share)) in secret_shares
-            .iter_mut()
-            .zip(blinder_shares.iter_mut())
-            .enumerate()
-        {
-            let share_id = parameters
-                .participant_number_generator
-                .get_participant_id(i);
-            if !dup_check.insert(share_id.to_repr().as_ref().to_vec()) {
-                return Err(Error::InitializationError(format!(
-                    "Duplicate id found {:?}",
-                    share_id
-                )));
-            }
-            if share_id == id {
-                ordinal = i;
-            }
-            all_participant_ids.insert(i, share_id);
-            *secret_share = (
-                share_id,
-                secret_polynomial
-                    .iter()
-                    .rfold(G::Scalar::ZERO, |acc, c| acc * share_id + c),
-            );
-            *blinder_share = (
-                share_id,
-                blinder_polynomial
-                    .iter()
-                    .rfold(G::Scalar::ZERO, |acc, c| acc * share_id + c),
-            );
-        }
-        if !all_participant_ids.contains_key(&ordinal) {
+        if parameters.message_generator == parameters.blinder_generator {
             return Err(Error::InitializationError(
-                "Id not found in participant ids".to_string(),
+                "Message and blinder generators cannot be equal".to_string(),
             ));
         }
+
+        let pedersen_params = PedersenOptions {
+            secret,
+            blinder: Some(blinder),
+            secret_generator: Some(ValueGroup(parameters.message_generator)),
+            blinder_generator: Some(ValueGroup(parameters.blinder_generator)),
+            participant_generators: parameters.participant_number_generators.as_slice(),
+        };
+
+        let components: InnerPedersenResult<G::Scalar, G> =
+            StdVsss::split_secret_with_blind_verifiers(
+                parameters.threshold,
+                parameters.limit,
+                &pedersen_params,
+                rng,
+            )?;
 
         let mut powers_of_i = vec![G::Scalar::ONE; parameters.threshold];
-        powers_of_i[1] = id;
+        powers_of_i[1] = *id;
         for i in 2..parameters.threshold {
-            powers_of_i[i] = powers_of_i[i - 1] * id;
+            powers_of_i[i] = powers_of_i[i - 1] * *id;
         }
 
-        if pedersen_verifier_set.iter().any(|c| c.is_identity().into())
-            || feldman_verifier_set
-                .iter()
-                .skip(1)
-                .any(|c| c.is_identity().into())
-            || !I::check_feldman_verifier(feldman_verifier_set[0])
+        let pedersen_verifier_set: VecPedersenVerifierSet<
+            SecretShare<G::Scalar>,
+            ShareVerifierGroup<G>,
+        > = components.pedersen_verifier_set().into();
+        if pedersen_verifier_set
+            .blind_verifiers()
+            .iter()
+            .any(|c| c.is_identity().into())
         {
             return Err(Error::InitializationError(
-                "Invalid commitments".to_string(),
+                "Invalid pedersen verifier".to_string(),
             ));
         }
+
+        let feldman_verifier_set: VecFeldmanVerifierSet<
+            SecretShare<G::Scalar>,
+            ShareVerifierGroup<G>,
+        > = components.feldman_verifier_set().into();
+        let feldman_verifiers = feldman_verifier_set.verifiers();
+        if feldman_verifiers
+            .iter()
+            .skip(1)
+            .any(|c| c.is_identity().into())
+            || !I::check_feldman_verifier(*feldman_verifiers[0])
+        {
+            return Err(Error::InitializationError(
+                "Invalid feldman verifier".to_string(),
+            ));
+        }
+
+        let ordinal = components
+            .secret_shares()
+            .iter()
+            .position(|s| s.identifier == id)
+            .ok_or_else(|| {
+                Error::InitializationError(format!(
+                    "Invalid participant id '{}'. Not in generated set of shares",
+                    id
+                ))
+            })?;
+        let all_participant_ids = components
+            .secret_shares()
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (i, s.identifier))
+            .collect();
+
         Ok(Self {
             ordinal,
             id,
             threshold: parameters.threshold,
             limit: parameters.limit,
-            round: Round::One,
+            round: Round::Zero,
+            components,
+            secret_share: SecretShare::<G::Scalar>::default(),
+            blind_share: SecretShare::<G::Scalar>::default(),
             message_generator: parameters.message_generator,
             blinder_generator: parameters.blinder_generator,
-            secret_share: G::Scalar::ZERO,
-            secret_shares,
-            blind_share: G::Scalar::ZERO,
-            blinder_shares,
-            feldman_verifier_set,
-            pedersen_verifier_set,
-            public_key: G::identity(),
-            blind_key: G::identity(),
+            public_key: ValueGroup::<G>::identity(),
             powers_of_i,
             received_round0_data: BTreeMap::new(),
             received_round1_data: BTreeMap::new(),
@@ -285,7 +291,7 @@ where
     }
 
     /// The identifier associated with this secret_participant
-    pub fn get_id(&self) -> G::Scalar {
+    pub fn get_id(&self) -> IdentifierPrimeField<G::Scalar> {
         self.id
     }
 
@@ -312,23 +318,9 @@ where
     /// Computed secret share.
     /// This value is useless until at least 2 rounds have been run
     /// so [`None`] is returned until completion
-    pub fn get_secret_share(&self) -> Option<G::Scalar> {
-        if self.round >= Round::Two {
+    pub fn get_secret_share(&self) -> Option<SecretShare<G::Scalar>> {
+        if self.round >= Round::Five {
             Some(self.secret_share)
-        } else {
-            None
-        }
-    }
-
-    /// Computed blind share.
-    /// This value is useless until at least 2 rounds have been run
-    /// so [`None`] is returned until completion
-    /// This is not normally used outside this protocol
-    /// however, it can be used as a second secret share if needed
-    /// thereby allowing to extract a 2nd share from one run of the protocol
-    pub fn get_blind_share(&self) -> Option<G::Scalar> {
-        if self.round >= Round::Two {
-            Some(self.blind_share)
         } else {
             None
         }
@@ -339,25 +331,25 @@ where
     /// so [`None`] is returned until completion
     pub fn get_public_key(&self) -> Option<G> {
         if self.round == Round::Five {
-            Some(self.public_key)
+            Some(*self.public_key)
         } else {
             None
         }
     }
 
     /// Return the list of valid participant ids
-    pub fn get_valid_participant_ids(&self) -> &BTreeMap<usize, G::Scalar> {
+    pub fn get_valid_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
         &self.valid_participant_ids
     }
 
     /// Return the list of all participants that started the protocol
-    pub fn get_all_participant_ids(&self) -> &BTreeMap<usize, G::Scalar> {
+    pub fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
         &self.all_participant_ids
     }
 
     /// Receive data from another participant
     pub fn receive(&mut self, data: &[u8]) -> DkgResult<()> {
-        let round = Round::try_from(data[0]).map_err(|e| Error::InitializationError(e))?;
+        let round = Round::try_from(data[0]).map_err(Error::InitializationError)?;
         match round {
             Round::Zero => {
                 let round0_payload = postcard::from_bytes::<Round0Data<G>>(&data[1..])?;
@@ -379,7 +371,10 @@ where
                 let round4_payload = postcard::from_bytes::<Round4Data<G>>(&data[1..])?;
                 self.receive_round4data(round4_payload)
             }
-            _ => Err(Error::RoundError(5, "Protocol is complete".to_string())),
+            _ => Err(Error::RoundError(
+                Round::Five,
+                "Protocol is complete".to_string(),
+            )),
         }
     }
 
@@ -391,20 +386,29 @@ where
             Round::Two => self.round2(),
             Round::Three => self.round3(),
             Round::Four => self.round4(),
-            Round::Five => Err(Error::RoundError(5, "nothing more to run".to_string())),
+            Round::Five => Err(Error::RoundError(
+                Round::Five,
+                "nothing more to run".to_string(),
+            )),
         }
     }
 
     pub(crate) fn check_sending_participant_id(
         &self,
-        round: usize,
-        sender_index: usize,
-        sender_id: G::Scalar,
+        round: Round,
+        sender_ordinal: usize,
+        sender_id: IdentifierPrimeField<G::Scalar>,
     ) -> DkgResult<()> {
-        if !self.all_participant_ids.contains_key(&sender_index) {
+        let id = self
+            .all_participant_ids
+            .get(&sender_ordinal)
+            .ok_or_else(|| {
+                Error::RoundError(round, format!("Unknown sender ordinal, {}", sender_ordinal))
+            })?;
+        if *id != sender_id {
             return Err(Error::RoundError(
                 round,
-                format!("Unknown sender index, {}", sender_index),
+                format!("Sender id mismatch, expected '{}', got '{}'", id, sender_id),
             ));
         }
         if sender_id.is_zero().into() {
@@ -422,9 +426,9 @@ where
     pub(crate) fn compute_pedersen_commitments_hash(
         participant_type: ParticipantType,
         ordinal_index: usize,
-        id: G::Scalar,
+        id: IdentifierPrimeField<G::Scalar>,
         threshold: usize,
-        pedersen_commitments: &[G],
+        pedersen_commitments: &[ShareVerifierGroup<G>],
     ) -> [u8; 32] {
         let mut transcript = Transcript::new(b"pedersen commitments");
         transcript.append_u64(b"participant type", participant_type as u64);
@@ -443,9 +447,9 @@ where
     pub(crate) fn compute_feldman_commitments_hash(
         participant_type: ParticipantType,
         ordinal_index: usize,
-        id: G::Scalar,
+        id: IdentifierPrimeField<G::Scalar>,
         threshold: usize,
-        feldman_commitments: &[G],
+        feldman_commitments: &[ShareVerifierGroup<G>],
     ) -> [u8; 32] {
         let mut transcript = Transcript::new(b"feldman commitments");
         transcript.append_u64(b"participant type", participant_type as u64);
@@ -461,18 +465,21 @@ where
         commitment_hash
     }
 
-    pub(crate) fn lagrange(share: G::Scalar, shares_ids: &[G::Scalar]) -> G::Scalar {
+    pub(crate) fn lagrange(
+        share: &SecretShare<G::Scalar>,
+        shares_ids: &[IdentifierPrimeField<G::Scalar>],
+    ) -> ValuePrimeField<G::Scalar> {
         let mut num = G::Scalar::ONE;
         let mut den = G::Scalar::ONE;
         for &x_j in shares_ids.iter() {
-            if x_j == share {
+            if x_j == share.identifier {
                 continue;
             }
-            num *= x_j;
-            den *= x_j - share;
+            num *= *x_j;
+            den *= *x_j - *share.identifier;
         }
 
-        num * den.invert().expect("Denominator should not be zero")
+        IdentifierPrimeField(num * den.invert().expect("Denominator should not be zero"))
     }
 }
 
@@ -487,7 +494,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
         ParticipantType::Secret
     }
 
-    fn secret(mut rng: impl RngCore) -> <G as Group>::Scalar {
+    fn random_value(mut rng: impl RngCore) -> <G as Group>::Scalar {
         G::Scalar::random(&mut rng)
     }
 
@@ -511,7 +518,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
         ParticipantType::Refresh
     }
 
-    fn secret(_rng: impl RngCore) -> <G as Group>::Scalar {
+    fn random_value(_rng: impl RngCore) -> <G as Group>::Scalar {
         G::Scalar::ZERO
     }
 
@@ -524,214 +531,139 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use blsful::inner_types::*;
-    use rand_chacha::ChaCha12Rng;
-    use rand_core::SeedableRng;
-    use vsss_rs::{Pedersen, PedersenResult, Share};
+/// A trait to allow for dynamic dispatch of the participant
+pub trait AnyParticipant<G>
+where
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+{
+    /// Get the ordinal index of this participant
+    fn get_ordinal(&self) -> usize;
+    /// Get the identifier associated with this participant
+    fn get_id(&self) -> IdentifierPrimeField<G::Scalar>;
+    /// Get the threshold
+    fn get_threshold(&self) -> usize;
+    /// Get the limit
+    fn get_limit(&self) -> usize;
+    /// Get the current round
+    fn get_round(&self) -> Round;
+    /// Get the secret share if completed
+    fn get_secret_share(&self) -> Option<SecretShare<G::Scalar>>;
+    /// Get the public key if completed
+    fn get_public_key(&self) -> Option<G>;
+    /// Get the valid participant ids from the last round
+    fn get_valid_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>>;
+    /// Get all participant ids that started the protocol
+    fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>>;
+    /// Check if the participant is completed
+    fn completed(&self) -> bool;
+    /// Receive data from another participant
+    fn receive(&mut self, data: &[u8]) -> DkgResult<()>;
+    /// Run the next round in the protocol after receiving data from other participants
+    fn run(&mut self) -> DkgResult<RoundOutputGenerator<G>>;
+}
 
-    #[test]
-    fn reconstruct_blind_key() {
-        let mut rng = ChaCha12Rng::from_seed([1u8; 32]);
-        let secrets = [
-            Scalar::random(&mut rng),
-            Scalar::random(&mut rng),
-            Scalar::random(&mut rng),
-        ];
-        let blind_secrets = [
-            Scalar::random(&mut rng),
-            Scalar::random(&mut rng),
-            Scalar::random(&mut rng),
-        ];
+impl<G> AnyParticipant<G> for Participant<SecretParticipantImpl<G>, G>
+where
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+{
+    fn get_ordinal(&self) -> usize {
+        self.ordinal
+    }
 
-        let pedersen_verifier_set0 =
-            vsss_rs::StdVsss::<G1Projective, u8, InnerShare>::split_secret_with_blind_verifier(
-                2,
-                3,
-                secrets[0],
-                Some(blind_secrets[0]),
-                None,
-                None,
-                &mut rng,
-            )
-            .unwrap();
+    fn get_id(&self) -> IdentifierPrimeField<G::Scalar> {
+        self.id
+    }
 
-        let pedersen_verifier_set1 =
-            vsss_rs::StdVsss::<G1Projective, u8, InnerShare>::split_secret_with_blind_verifier(
-                2,
-                3,
-                secrets[1],
-                Some(blind_secrets[1]),
-                None,
-                None,
-                &mut rng,
-            )
-            .unwrap();
+    fn get_threshold(&self) -> usize {
+        self.threshold
+    }
 
-        let pedersen_verifier_set2 =
-            vsss_rs::StdVsss::<G1Projective, u8, InnerShare>::split_secret_with_blind_verifier(
-                2,
-                3,
-                secrets[2],
-                Some(blind_secrets[2]),
-                None,
-                None,
-                &mut rng,
-            )
-            .unwrap();
+    fn get_limit(&self) -> usize {
+        self.limit
+    }
 
-        let secret_shares0 = pedersen_verifier_set0.secret_shares();
-        let blinder_shares0 = pedersen_verifier_set0.blinder_shares();
-        let pedersen_verifiers0 = pedersen_verifier_set0.pedersen_verifier_set();
-        let blind_verifiers0 = pedersen_verifiers0.blind_verifiers();
-        let secret_verifiers0 = pedersen_verifier_set0.feldman_verifier_set().verifiers();
+    fn get_round(&self) -> Round {
+        self.round
+    }
 
-        assert_eq!(
-            blind_verifiers0[0],
-            pedersen_verifiers0.secret_generator() * secrets[0]
-                + pedersen_verifiers0.blinder_generator() * blind_secrets[0]
-        );
-        assert_eq!(
-            secret_verifiers0[0],
-            pedersen_verifiers0.secret_generator() * secrets[0]
-        );
+    fn get_secret_share(&self) -> Option<SecretShare<G::Scalar>> {
+        self.get_secret_share()
+    }
 
-        let blind_key0 = blind_verifiers0[0] - secret_verifiers0[0];
-        assert_eq!(
-            blind_key0,
-            pedersen_verifiers0.blinder_generator() * blind_secrets[0]
-        );
+    fn get_public_key(&self) -> Option<G> {
+        self.get_public_key()
+    }
 
-        let secret_shares1 = pedersen_verifier_set1.secret_shares();
-        let blinder_shares1 = pedersen_verifier_set1.blinder_shares();
-        let pedersen_verifiers1 = pedersen_verifier_set1.pedersen_verifier_set();
-        let blind_verifiers1 = pedersen_verifiers1.blind_verifiers();
-        let secret_verifiers1 = pedersen_verifier_set1.feldman_verifier_set().verifiers();
+    fn get_valid_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
+        &self.valid_participant_ids
+    }
 
-        assert_eq!(
-            blind_verifiers1[0],
-            pedersen_verifiers1.secret_generator() * secrets[1]
-                + pedersen_verifiers1.blinder_generator() * blind_secrets[1]
-        );
-        assert_eq!(
-            secret_verifiers1[0],
-            pedersen_verifiers1.secret_generator() * secrets[1]
-        );
+    fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
+        &self.all_participant_ids
+    }
 
-        let blind_key1 = blind_verifiers1[0] - secret_verifiers1[0];
-        assert_eq!(
-            blind_key1,
-            pedersen_verifiers1.blinder_generator() * blind_secrets[1]
-        );
+    fn completed(&self) -> bool {
+        self.completed()
+    }
 
-        let secret_shares2 = pedersen_verifier_set2.secret_shares();
-        let blinder_shares2 = pedersen_verifier_set2.blinder_shares();
-        let pedersen_verifiers2 = pedersen_verifier_set2.pedersen_verifier_set();
-        let blind_verifiers2 = pedersen_verifiers2.blind_verifiers();
-        let secret_verifiers2 = pedersen_verifier_set2.feldman_verifier_set().verifiers();
+    fn receive(&mut self, data: &[u8]) -> DkgResult<()> {
+        self.receive(data)
+    }
 
-        assert_eq!(
-            blind_verifiers2[0],
-            pedersen_verifiers2.secret_generator() * secrets[2]
-                + pedersen_verifiers2.blinder_generator() * blind_secrets[2]
-        );
-        assert_eq!(
-            secret_verifiers2[0],
-            pedersen_verifiers2.secret_generator() * secrets[2]
-        );
+    fn run(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
+        self.run()
+    }
+}
 
-        let blind_key2 = blind_verifiers2[0] - secret_verifiers2[0];
-        assert_eq!(
-            blind_key2,
-            pedersen_verifiers2.blinder_generator() * blind_secrets[2]
-        );
+impl<G> AnyParticipant<G> for Participant<RefreshParticipantImpl<G>, G>
+where
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+{
+    fn get_ordinal(&self) -> usize {
+        self.ordinal
+    }
 
-        let secret_share0 = [
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares0[0]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares1[0]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares2[0]).unwrap(),
-        ]
-        .iter()
-        .sum::<Scalar>();
-        let secret_share1 = [
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares0[1]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares1[1]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares2[1]).unwrap(),
-        ]
-        .iter()
-        .sum::<Scalar>();
+    fn get_id(&self) -> IdentifierPrimeField<G::Scalar> {
+        self.id
+    }
 
-        let secret_share2 = [
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares0[2]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares1[2]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&secret_shares2[2]).unwrap(),
-        ]
-        .iter()
-        .sum::<Scalar>();
+    fn get_threshold(&self) -> usize {
+        self.threshold
+    }
 
-        let blind_share0 = [
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares0[0]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares1[0]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares2[0]).unwrap(),
-        ]
-        .iter()
-        .sum::<Scalar>();
-        let blind_share1 = [
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares0[1]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares1[1]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares2[1]).unwrap(),
-        ]
-        .iter()
-        .sum::<Scalar>();
-        let blind_share2 = [
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares0[2]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares1[2]).unwrap(),
-            <InnerShare as Share>::as_field_element::<Scalar>(&blinder_shares2[2]).unwrap(),
-        ]
-        .iter()
-        .sum::<Scalar>();
+    fn get_limit(&self) -> usize {
+        self.limit
+    }
 
-        let public_key = [
-            pedersen_verifier_set0.feldman_verifier_set().verifiers()[0],
-            pedersen_verifier_set1.feldman_verifier_set().verifiers()[0],
-            pedersen_verifier_set2.feldman_verifier_set().verifiers()[0],
-        ]
-        .iter()
-        .sum::<G1Projective>();
+    fn get_round(&self) -> Round {
+        self.round
+    }
 
-        let original_secret: Scalar = vsss_rs::combine_shares(&[
-            <InnerShare as Share>::from_field_element(1u8, secret_share0).unwrap(),
-            <InnerShare as Share>::from_field_element(2u8, secret_share1).unwrap(),
-            <InnerShare as Share>::from_field_element(3u8, secret_share2).unwrap(),
-        ])
-        .unwrap();
-        assert_eq!(original_secret, secrets.iter().sum());
-        assert_eq!(public_key, G1Projective::GENERATOR * original_secret);
+    fn get_secret_share(&self) -> Option<SecretShare<G::Scalar>> {
+        self.get_secret_share()
+    }
 
-        let blind_key = [
-            pedersen_verifier_set0
-                .pedersen_verifier_set()
-                .blind_verifiers()[0],
-            pedersen_verifier_set1
-                .pedersen_verifier_set()
-                .blind_verifiers()[0],
-            pedersen_verifier_set2
-                .pedersen_verifier_set()
-                .blind_verifiers()[0],
-        ]
-        .iter()
-        .sum::<G1Projective>()
-            - public_key;
+    fn get_public_key(&self) -> Option<G> {
+        self.get_public_key()
+    }
 
-        let original_blinder: Scalar = vsss_rs::combine_shares(&[
-            <InnerShare as Share>::from_field_element(1u8, blind_share0).unwrap(),
-            <InnerShare as Share>::from_field_element(2u8, blind_share1).unwrap(),
-            <InnerShare as Share>::from_field_element(3u8, blind_share2).unwrap(),
-        ])
-        .unwrap();
-        assert_eq!(original_blinder, blind_secrets.iter().sum());
-        assert_eq!(blind_key0 + blind_key1 + blind_key2, blind_key);
+    fn get_valid_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
+        &self.valid_participant_ids
+    }
+
+    fn get_all_participant_ids(&self) -> &BTreeMap<usize, IdentifierPrimeField<G::Scalar>> {
+        &self.all_participant_ids
+    }
+
+    fn completed(&self) -> bool {
+        self.completed()
+    }
+
+    fn receive(&mut self, data: &[u8]) -> DkgResult<()> {
+        self.receive(data)
+    }
+
+    fn run(&mut self) -> DkgResult<RoundOutputGenerator<G>> {
+        self.run()
     }
 }

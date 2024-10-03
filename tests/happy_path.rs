@@ -1,13 +1,12 @@
+use elliptic_curve_tools::SumOfProducts;
 use gennaro_dkg::*;
 use rstest::*;
-use std::collections::BTreeMap;
-use std::iter::Sum;
 use std::num::NonZeroUsize;
 use vsss_rs::{
-    combine_shares,
     curve25519::*,
     elliptic_curve::{group::GroupEncoding, Group},
-    ParticipantNumberGenerator, SequentialParticipantNumberGenerator, Share,
+    IdentifierPrimeField, ParticipantIdGeneratorCollection, ParticipantIdGeneratorType,
+    ReadableShareSet,
 };
 
 #[rstest]
@@ -115,862 +114,499 @@ fn add_and_remove_participant_decrease_participant<
 }
 
 fn five_participants_init<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
-) -> (Vec<SecretParticipant<G>>, <G as Group>::Scalar) {
+) -> (Vec<Box<dyn AnyParticipant<G>>>, <G as Group>::Scalar) {
     const THRESHOLD: usize = 3;
     const LIMIT: usize = 5;
 
     let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
     let limit = NonZeroUsize::new(LIMIT).unwrap();
-    let seq = SequentialParticipantNumberGenerator::<G::Scalar>::new(None, None, limit);
-    let parameters = Parameters::<G, SequentialParticipantNumberGenerator<G::Scalar>>::new(
-        threshold,
-        limit,
-        None,
-        None,
-        Some(seq.clone()),
-    );
-    let mut participants = vec![
-        SecretParticipant::<G>::new(seq.get_participant_id(1), &parameters).unwrap(),
-        SecretParticipant::<G>::new(seq.get_participant_id(2), &parameters).unwrap(),
-        SecretParticipant::<G>::new(seq.get_participant_id(3), &parameters).unwrap(),
-        SecretParticipant::<G>::new(seq.get_participant_id(4), &parameters).unwrap(),
-        SecretParticipant::<G>::new(seq.get_participant_id(5), &parameters).unwrap(),
+    let seq = vec![
+        ParticipantIdGeneratorType::<IdentifierPrimeField<G::Scalar>>::sequential(
+            None, None, limit,
+        ),
     ];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+    let seq = vec![
+        ParticipantIdGeneratorType::<IdentifierPrimeField<G::Scalar>>::sequential(
+            None, None, limit,
+        ),
+    ];
+    let mut participants = ParticipantIdGeneratorCollection::from(&seq)
+        .iter()
+        .map(|id| {
+            let p = Box::new(SecretParticipant::<G>::new(id, &parameters).unwrap());
+            p as Box<dyn AnyParticipant<G>>
+        })
+        .collect::<Vec<Box<dyn AnyParticipant<G>>>>();
 
-    let mut r1bdata = Vec::with_capacity(LIMIT);
-    let mut r1p2pdata = Vec::with_capacity(LIMIT);
-    for p in participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
-    }
-    for p in participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-
-    // serialize test
-
-    let res_participant_json = serde_json::to_string(&participants[0]);
-    assert!(res_participant_json.is_ok());
-    let participant_json = res_participant_json.unwrap();
-    let res_p0 = serde_json::from_str::<SecretParticipant<G>>(&participant_json);
-    assert!(res_p0.is_ok());
-    let p0 = res_p0.unwrap();
-    assert_eq!(p0.get_id(), participants[0].get_id());
-
-    let mut r2bdata = BTreeMap::new();
-
-    for i in 0..LIMIT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        let p = &mut participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
     }
 
-    let mut r3bdata = BTreeMap::new();
-    for p in participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
+    assert_eq!(
+        participants[0].get_public_key().unwrap(),
+        participants[1].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        participants[2].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[2].get_public_key().unwrap(),
+        participants[3].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[3].get_public_key().unwrap(),
+        participants[4].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[4].get_public_key().unwrap(),
+        participants[1].get_public_key().unwrap()
+    );
 
-    let mut r4bdata = BTreeMap::new();
-    let mut r4shares = Vec::with_capacity(LIMIT);
-    let mut r4blind_shares = Vec::with_capacity(LIMIT);
-    for p in participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        let blind_share = p.get_blind_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        r4blind_shares.push(
-            <InnerShare as Share>::from_field_element(p.get_id() as u8, blind_share).unwrap(),
-        );
-        assert!(p.round4(&r3bdata).is_err());
-    }
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
 
-    for p in &participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-
-    assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-    assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-    assert!(participants[2].get_public_key().unwrap() == participants[3].get_public_key().unwrap());
-    assert!(participants[3].get_public_key().unwrap() == participants[4].get_public_key().unwrap());
-    assert!(participants[4].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-
-    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
+    let res = shares.combine();
     assert!(res.is_ok());
     let secret = res.unwrap();
 
-    // println!("Old Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        G::generator() * *secret
+    );
 
-    assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&5].public_key, G::generator() * secret);
-
-    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4blind_shares);
-    assert!(res.is_ok());
-
-    (participants, secret)
+    (participants, *secret)
 }
 
-fn five_participants_add_participant<G: Group + GroupEncoding + Default>(threshold: usize) {
+fn five_participants_add_participant<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
+    threshold: usize,
+) {
     let (participants, secret) = five_participants_init::<G>();
 
     // Next epoch
-    let THRESHOLD: usize = threshold;
     const LIMIT: usize = 5;
     const INCREMENT: usize = 2;
 
-    let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
+    let threshold = NonZeroUsize::new(threshold).unwrap();
     let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
-    let parameters = Parameters::<G>::new(threshold, limit);
-
-    let share_ids = [
-        G::Scalar::from(1),
-        G::Scalar::from(2),
-        G::Scalar::from(3),
-        G::Scalar::from(4),
-        G::Scalar::from(5),
-    ];
-
-    let mut participants = [
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(1).unwrap(),
-            parameters,
-            participants[0].get_secret_share().unwrap(),
-            &share_ids,
-            0,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
+    let pids = participants.iter().map(|p| p.get_id()).collect::<Vec<_>>();
+    let seq = vec![
+        ParticipantIdGeneratorType::list(&pids),
+        ParticipantIdGeneratorType::sequential(
+            Some(IdentifierPrimeField(G::Scalar::from(6))),
+            None,
             NonZeroUsize::new(2).unwrap(),
-            parameters,
-            participants[1].get_secret_share().unwrap(),
-            &share_ids,
-            1,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(3).unwrap(),
-            parameters,
-            participants[2].get_secret_share().unwrap(),
-            &share_ids,
-            2,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(4).unwrap(),
-            parameters,
-            participants[3].get_secret_share().unwrap(),
-            &share_ids,
-            3,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(5).unwrap(),
-            parameters,
-            participants[4].get_secret_share().unwrap(),
-            &share_ids,
-            4,
-        )
-        .unwrap(),
+        ),
     ];
-    let mut new_participants = [
-        RefreshParticipant::<G>::new(NonZeroUsize::new(6).unwrap(), parameters).unwrap(),
-        RefreshParticipant::<G>::new(NonZeroUsize::new(7).unwrap(), parameters).unwrap(),
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 7] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[0].get_id(),
+                &participants[0].get_secret_share().unwrap(),
+                &parameters,
+                &pids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[1].get_id(),
+                &participants[1].get_secret_share().unwrap(),
+                &parameters,
+                &pids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[2].get_id(),
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &pids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[3].get_id(),
+                &participants[3].get_secret_share().unwrap(),
+                &parameters,
+                &pids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                participants[4].get_id(),
+                &participants[4].get_secret_share().unwrap(),
+                &parameters,
+                &pids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            RefreshParticipant::<G>::new(IdentifierPrimeField(G::Scalar::from(6)), &parameters)
+                .unwrap(),
+        ),
+        Box::new(
+            RefreshParticipant::<G>::new(IdentifierPrimeField(G::Scalar::from(7)), &parameters)
+                .unwrap(),
+        ),
     ];
 
-    // Round 1
-    let mut r1bdata = Vec::with_capacity(LIMIT + INCREMENT);
-    let mut r1p2pdata = Vec::with_capacity(LIMIT + INCREMENT);
-    for p in participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
-    }
-    for p in new_participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
     }
 
-    for p in participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-    for p in new_participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-
-    // Round 2
-    let mut r2bdata = BTreeMap::new();
-
-    for i in 0..LIMIT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        for j in 0..INCREMENT {
-            let pp = &new_participants[j];
-            let id = pp.get_id();
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-
-        let p = &mut participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
-    }
-    for i in 0..INCREMENT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = new_participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        for j in 0..INCREMENT {
-            let pp = &new_participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-
-        let p = &mut new_participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
-    }
-
-    // Round 3
-    let mut r3bdata = BTreeMap::new();
-    for p in participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-    for p in new_participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-
-    // Round 4
-    let mut r4bdata = BTreeMap::new();
-    let mut r4shares = Vec::with_capacity(LIMIT + INCREMENT);
-    for p in participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-    for p in new_participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-
-    // Round 5
-    for p in &participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-    for p in &new_participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-
-    assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-    assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-    assert!(participants[2].get_public_key().unwrap() == participants[3].get_public_key().unwrap());
-    assert!(participants[3].get_public_key().unwrap() == participants[4].get_public_key().unwrap());
-    assert!(
-        participants[4].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap()
+    assert_eq!(
+        participants[0].get_public_key().unwrap(),
+        participants[1].get_public_key().unwrap()
     );
-    assert!(
-        new_participants[0].get_public_key().unwrap()
-            == new_participants[1].get_public_key().unwrap()
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        participants[2].get_public_key().unwrap()
     );
-    assert!(
-        new_participants[1].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
+    assert_eq!(
+        participants[2].get_public_key().unwrap(),
+        participants[3].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[3].get_public_key().unwrap(),
+        participants[4].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[4].get_public_key().unwrap(),
+        participants[5].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[5].get_public_key().unwrap(),
+        participants[6].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+
+    let res = shares.combine();
     assert!(res.is_ok());
     let new_secret = res.unwrap();
 
-    // println!("New Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
+    let actual_pk = G::generator() * *new_secret;
 
-    assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&5].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&6].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&7].public_key, G::generator() * secret);
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
 
     // Old shared secret remains unchanged
-    assert_eq!(secret, new_secret);
+    assert_eq!(secret, *new_secret);
 }
 
-fn five_participants_remove_participant<G: Group + GroupEncoding + Default>(threshold: usize) {
-    let (participants, secret) = five_participants_init::<G>();
-
-    // Next epoch
-    let THRESHOLD: usize = threshold;
-    const LIMIT: usize = 3;
-
-    let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
-    let limit = NonZeroUsize::new(LIMIT).unwrap();
-    let parameters = Parameters::<G>::new(threshold, limit);
-
-    let share_ids = [G::Scalar::from(1), G::Scalar::from(3), G::Scalar::from(4)];
-
-    let mut participants = [
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(1).unwrap(),
-            parameters,
-            participants[0].get_secret_share().unwrap(),
-            &share_ids,
-            0,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(2).unwrap(),
-            parameters,
-            participants[2].get_secret_share().unwrap(),
-            &share_ids,
-            1,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(3).unwrap(),
-            parameters,
-            participants[3].get_secret_share().unwrap(),
-            &share_ids,
-            2,
-        )
-        .unwrap(),
-    ];
-
-    let mut r1bdata = Vec::with_capacity(LIMIT);
-    let mut r1p2pdata = Vec::with_capacity(LIMIT);
-    for p in participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
-    }
-    for p in participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-
-    // serialize test
-
-    let res_participant_json = serde_json::to_string(&participants[0]);
-    assert!(res_participant_json.is_ok());
-    let participant_json = res_participant_json.unwrap();
-    let res_p0 = serde_json::from_str::<SecretParticipant<G>>(&participant_json);
-    assert!(res_p0.is_ok());
-    let p0 = res_p0.unwrap();
-    assert_eq!(p0.get_id(), participants[0].get_id());
-
-    let mut r2bdata = BTreeMap::new();
-
-    for i in 0..LIMIT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        let p = &mut participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
-    }
-
-    let mut r3bdata = BTreeMap::new();
-    for p in participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-
-    let mut r4bdata = BTreeMap::new();
-    let mut r4shares = Vec::with_capacity(LIMIT);
-    for p in participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-
-    for p in &participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-
-    assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-
-    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
-    assert!(res.is_ok());
-    let new_secret = res.unwrap();
-
-    // println!("Old Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
-
-    assert_eq!(r4bdata[&1].public_key, G::generator() * new_secret);
-    assert_eq!(r4bdata[&2].public_key, G::generator() * new_secret);
-    assert_eq!(r4bdata[&3].public_key, G::generator() * new_secret);
-
-    // Old shared secret remains unchanged
-    assert_eq!(secret, new_secret);
-}
-
-fn five_participants_add_and_remove_decrease_participant<G: Group + GroupEncoding + Default>(
+fn five_participants_remove_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
     threshold: usize,
 ) {
     let (participants, secret) = five_participants_init::<G>();
 
     // Next epoch
-    let THRESHOLD: usize = threshold;
+    const LIMIT: usize = 3;
+
+    let threshold = NonZeroUsize::new(threshold).unwrap();
+    let limit = NonZeroUsize::new(LIMIT).unwrap();
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, None);
+
+    let share_ids = [
+        IdentifierPrimeField(G::Scalar::from(1)),
+        IdentifierPrimeField(G::Scalar::from(3)),
+        IdentifierPrimeField(G::Scalar::from(4)),
+    ];
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 3] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(1)),
+                &participants[0].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(2)),
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(3)),
+                &participants[3].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+    ];
+
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    assert_eq!(
+        participants[0].get_public_key().unwrap(),
+        participants[1].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        participants[2].get_public_key().unwrap()
+    );
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+
+    let res = shares.combine();
+    assert!(res.is_ok());
+    let new_secret = res.unwrap();
+
+    let actual_pk = G::generator() * *new_secret;
+
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret, *new_secret);
+}
+
+fn five_participants_add_and_remove_decrease_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
+    threshold: usize,
+) {
+    let (participants, secret) = five_participants_init::<G>();
+
+    // Next epoch
     const LIMIT: usize = 3;
     const INCREMENT: usize = 1;
 
-    let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
+    let threshold = NonZeroUsize::new(threshold).unwrap();
     let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
-    let parameters = Parameters::<G>::new(threshold, limit);
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, None);
 
-    let share_ids = [G::Scalar::from(2), G::Scalar::from(3), G::Scalar::from(4)];
-
-    let mut participants = [
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(1).unwrap(),
-            parameters,
-            participants[1].get_secret_share().unwrap(),
-            &share_ids,
-            0,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(2).unwrap(),
-            parameters,
-            participants[2].get_secret_share().unwrap(),
-            &share_ids,
-            1,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(3).unwrap(),
-            parameters,
-            participants[3].get_secret_share().unwrap(),
-            &share_ids,
-            2,
-        )
-        .unwrap(),
+    let share_ids = [
+        participants[1].get_id(),
+        participants[2].get_id(),
+        participants[3].get_id(),
     ];
 
-    let mut new_participants =
-        [RefreshParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap()];
+    let mut participants: [Box<dyn AnyParticipant<G>>; 4] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(1)),
+                &participants[1].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(2)),
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(3)),
+                &participants[3].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            RefreshParticipant::<G>::new(IdentifierPrimeField(G::Scalar::from(4)), &parameters)
+                .unwrap(),
+        ),
+    ];
 
-    // Round 1
-    let mut r1bdata = Vec::with_capacity(LIMIT + INCREMENT);
-    let mut r1p2pdata = Vec::with_capacity(LIMIT + INCREMENT);
-    for p in participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
-    }
-    for p in new_participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
-    }
-
-    for p in participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-    for p in new_participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-
-    // Round 2
-    let mut r2bdata = BTreeMap::new();
-
-    for i in 0..LIMIT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        for j in 0..INCREMENT {
-            let pp = &new_participants[j];
-            let id = pp.get_id();
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-
-        let p = &mut participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
-    }
-    for i in 0..INCREMENT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = new_participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        for j in 0..INCREMENT {
-            let pp = &new_participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-
-        let p = &mut new_participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
     }
 
-    // Round 3
-    let mut r3bdata = BTreeMap::new();
-    for p in participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-    for p in new_participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-
-    // Round 4
-    let mut r4bdata = BTreeMap::new();
-    let mut r4shares = Vec::with_capacity(LIMIT + INCREMENT);
-    for p in participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-    for p in new_participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-
-    // Round 5
-    for p in &participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-    for p in &new_participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-
-    assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-    assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-    assert!(
-        participants[2].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap()
+    assert_eq!(
+        participants[0].get_public_key().unwrap(),
+        participants[1].get_public_key().unwrap()
     );
-    assert!(
-        new_participants[0].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        participants[2].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[2].get_public_key().unwrap(),
+        participants[3].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+    let res = shares.combine();
     assert!(res.is_ok());
     let new_secret = res.unwrap();
+    let actual_pk = G::generator() * *new_secret;
 
-    // println!("New Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
-
-    assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
 
     // Old shared secret remains unchanged
-    assert_eq!(secret, new_secret);
+    assert_eq!(secret, *new_secret);
 }
 
-fn five_participants_add_and_remove_increase_participant<G: Group + GroupEncoding + Default>(
+fn five_participants_add_and_remove_increase_participant<
+    G: GroupHasher + GroupEncoding + SumOfProducts + Default,
+>(
     threshold: usize,
 ) {
     let (participants, secret) = five_participants_init::<G>();
 
     // Next epoch
-    let THRESHOLD: usize = threshold;
     const LIMIT: usize = 3;
     const INCREMENT: usize = 3;
 
-    let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
+    let threshold = NonZeroUsize::new(threshold).unwrap();
     let limit = NonZeroUsize::new(LIMIT + INCREMENT).unwrap();
-    let parameters = Parameters::<G>::new(threshold, limit);
+    let share_ids = [
+        participants[1].get_id(),
+        participants[2].get_id(),
+        participants[4].get_id(),
+    ];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, None);
 
-    let share_ids = [G::Scalar::from(2), G::Scalar::from(3), G::Scalar::from(5)];
-
-    let mut participants = [
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(1).unwrap(),
-            parameters,
-            participants[1].get_secret_share().unwrap(),
-            &share_ids,
-            0,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(2).unwrap(),
-            parameters,
-            participants[2].get_secret_share().unwrap(),
-            &share_ids,
-            1,
-        )
-        .unwrap(),
-        SecretParticipant::<G>::with_secret(
-            NonZeroUsize::new(3).unwrap(),
-            parameters,
-            participants[4].get_secret_share().unwrap(),
-            &share_ids,
-            2,
-        )
-        .unwrap(),
+    let mut participants: [Box<dyn AnyParticipant<G>>; 6] = [
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(1)),
+                &participants[1].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(2)),
+                &participants[2].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            SecretParticipant::<G>::with_secret(
+                IdentifierPrimeField(G::Scalar::from(3)),
+                &participants[4].get_secret_share().unwrap(),
+                &parameters,
+                &share_ids,
+            )
+            .unwrap(),
+        ),
+        Box::new(
+            RefreshParticipant::<G>::new(IdentifierPrimeField(G::Scalar::from(4)), &parameters)
+                .unwrap(),
+        ),
+        Box::new(
+            RefreshParticipant::<G>::new(IdentifierPrimeField(G::Scalar::from(5)), &parameters)
+                .unwrap(),
+        ),
+        Box::new(
+            RefreshParticipant::<G>::new(IdentifierPrimeField(G::Scalar::from(6)), &parameters)
+                .unwrap(),
+        ),
     ];
 
-    let mut new_participants = [
-        RefreshParticipant::<G>::new(NonZeroUsize::new(4).unwrap(), parameters).unwrap(),
-        RefreshParticipant::<G>::new(NonZeroUsize::new(5).unwrap(), parameters).unwrap(),
-        RefreshParticipant::<G>::new(NonZeroUsize::new(6).unwrap(), parameters).unwrap(),
-    ];
-
-    // Round 1
-    let mut r1bdata = Vec::with_capacity(LIMIT + INCREMENT);
-    let mut r1p2pdata = Vec::with_capacity(LIMIT + INCREMENT);
-    for p in participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
-    }
-    for p in new_participants.iter_mut() {
-        let (broadcast, p2p) = p.round1().expect("Round 1 should work");
-        r1bdata.push(broadcast);
-        r1p2pdata.push(p2p);
+    for _ in Round::range(Round::Zero, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
     }
 
-    for p in participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-    for p in new_participants.iter_mut() {
-        assert!(p.round1().is_err());
-    }
-
-    // Round 2
-    let mut r2bdata = BTreeMap::new();
-
-    for i in 0..LIMIT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        for j in 0..INCREMENT {
-            let pp = &new_participants[j];
-            let id = pp.get_id();
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-
-        let p = &mut participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
-    }
-    for i in 0..INCREMENT {
-        let mut bdata = BTreeMap::new();
-        let mut p2pdata = BTreeMap::new();
-
-        let my_id = new_participants[i].get_id();
-        for j in 0..LIMIT {
-            let pp = &participants[j];
-            let id = pp.get_id();
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-        for j in 0..INCREMENT {
-            let pp = &new_participants[j];
-            let id = pp.get_id();
-            if my_id == id {
-                continue;
-            }
-            bdata.insert(id, r1bdata[id - 1].clone());
-            p2pdata.insert(id, r1p2pdata[id - 1][&my_id].clone());
-        }
-
-        let p = &mut new_participants[i];
-        let res = p.round2(bdata, p2pdata);
-        assert!(res.is_ok());
-        r2bdata.insert(my_id, res.unwrap());
-    }
-
-    // Round 3
-    let mut r3bdata = BTreeMap::new();
-    for p in participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-    for p in new_participants.iter_mut() {
-        let res = p.round3(&r2bdata);
-        assert!(res.is_ok());
-        r3bdata.insert(p.get_id(), res.unwrap());
-        assert!(p.round3(&r2bdata).is_err());
-    }
-
-    // Round 4
-    let mut r4bdata = BTreeMap::new();
-    let mut r4shares = Vec::with_capacity(LIMIT + INCREMENT);
-    for p in participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-    for p in new_participants.iter_mut() {
-        let res = p.round4(&r3bdata);
-        assert!(res.is_ok());
-        let bdata = res.unwrap();
-        let share = p.get_secret_share().unwrap();
-        r4bdata.insert(p.get_id(), bdata);
-        r4shares.push(<InnerShare as Share>::from_field_element(p.get_id() as u8, share).unwrap());
-        assert!(p.round4(&r3bdata).is_err());
-    }
-
-    // Round 5
-    for p in &participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-    for p in &new_participants {
-        assert!(p.round5(&r4bdata).is_ok());
-    }
-
-    assert!(participants[0].get_public_key().unwrap() == participants[1].get_public_key().unwrap());
-    assert!(participants[1].get_public_key().unwrap() == participants[2].get_public_key().unwrap());
-    assert!(
-        participants[2].get_public_key().unwrap() == new_participants[0].get_public_key().unwrap()
+    assert_eq!(
+        participants[0].get_public_key().unwrap(),
+        participants[1].get_public_key().unwrap()
     );
-    assert!(
-        new_participants[0].get_public_key().unwrap()
-            == new_participants[1].get_public_key().unwrap()
+    assert_eq!(
+        participants[1].get_public_key().unwrap(),
+        participants[2].get_public_key().unwrap()
     );
-    assert!(
-        new_participants[1].get_public_key().unwrap()
-            == new_participants[2].get_public_key().unwrap()
+    assert_eq!(
+        participants[2].get_public_key().unwrap(),
+        participants[3].get_public_key().unwrap()
     );
-    assert!(
-        new_participants[2].get_public_key().unwrap() == participants[0].get_public_key().unwrap()
+    assert_eq!(
+        participants[3].get_public_key().unwrap(),
+        participants[4].get_public_key().unwrap()
+    );
+    assert_eq!(
+        participants[4].get_public_key().unwrap(),
+        participants[5].get_public_key().unwrap()
     );
 
-    let res = combine_shares::<G::Scalar, u8, InnerShare>(&r4shares);
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+    let res = shares.combine();
     assert!(res.is_ok());
     let new_secret = res.unwrap();
-
-    // println!("New Public - {:?}", (G::generator() * secret).to_bytes().as_ref());
-
-    assert_eq!(r4bdata[&1].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&2].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&3].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&4].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&5].public_key, G::generator() * secret);
-    assert_eq!(r4bdata[&6].public_key, G::generator() * secret);
+    let actual_pk = G::generator() * *new_secret;
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
 
     // Old shared secret remains unchanged
-    assert_eq!(secret, new_secret);
+    assert_eq!(secret, *new_secret);
+}
+
+fn next_round<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
+    participants: &mut [Box<dyn AnyParticipant<G>>],
+) -> Vec<RoundOutputGenerator<G>> {
+    let mut round_generators = Vec::with_capacity(participants.len());
+    for participant in participants {
+        let generator = participant.run().unwrap();
+        round_generators.push(generator);
+    }
+    round_generators
+}
+
+fn receive<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
+    participants: &mut [Box<dyn AnyParticipant<G>>],
+    round_generators: &[RoundOutputGenerator<G>],
+) {
+    for round_generator in round_generators {
+        for ParticipantRoundOutput {
+            dst_ordinal: ordinal,
+            dst_id: id,
+            data,
+            ..
+        } in round_generator.iter()
+        {
+            if let Some(participant) = participants.get_mut(ordinal) {
+                assert_eq!(participant.get_ordinal(), ordinal);
+                assert_eq!(participant.get_id(), id);
+                let res = participant.receive(data.as_slice());
+                assert!(res.is_ok());
+            }
+        }
+    }
 }

@@ -1,3 +1,4 @@
+use crate::Round;
 use serde::{Deserialize, Serialize};
 use thiserror::Error as DError;
 
@@ -21,7 +22,7 @@ pub enum Error {
     InitializationError(String),
     /// Errors using rounds
     #[error("round {0} invalid input: `{1}`")]
-    RoundError(usize, String),
+    RoundError(Round, String),
 }
 
 impl From<vsss_rs::Error> for Error {
