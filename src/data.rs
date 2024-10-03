@@ -58,8 +58,6 @@ impl Iterator for RoundIter {
             let current = self.current;
             self.current = match self.current {
                 Round::One => Round::Two,
-                // Round::One => Round::Two,
-                // Round::Two => Round::Three,
                 Round::Two => Round::Three,
                 Round::Three => Round::Four,
                 Round::Four => Round::Five,
@@ -75,9 +73,8 @@ impl Iterator for RoundIter {
 impl Display for Round {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::One => write!(f, "0"),
-            Self::Two => write!(f, "1"),
-            // Self::Two => write!(f, "2"),
+            Self::One => write!(f, "1"),
+            Self::Two => write!(f, "2"),
             Self::Three => write!(f, "3"),
             Self::Four => write!(f, "4"),
             Self::Five => write!(f, "5"),
