@@ -206,7 +206,7 @@ mod tests {
 
         // Corrupt bad actor
         participants.remove(BAD_ID - 1);
-        for _ in Round::range(Round::Two, Round::Four) {
+        for _ in Round::range(Round::Three, Round::Four) {
             let generators = next_round(&mut participants);
             receive(&mut participants, generators);
         }

@@ -5,7 +5,7 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
     Participant<I, G>
 {
     pub(crate) fn round3_ready(&self) -> bool {
-        self.round == Round::Three && self.received_round2_data.len() >= self.threshold
+        self.round == Round::Three && self.received_round1_data.len() >= self.threshold
     }
 
     /// Computes round 3 for this participant.
@@ -22,15 +22,15 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
         if !self.round3_ready() {
             return Err(Error::RoundError(
                 Round::Three,
-                format!("round not ready, haven't received enough data from other participants. Need {} more", self.threshold - self.received_round2_data.len()),
+                format!("round not ready, haven't received enough data from other participants. Need {} more", self.threshold - self.received_round1_data.len()),
             ));
         }
 
         self.valid_participant_ids.clear();
-        for round2 in self.received_round2_data.values() {
-            round2.add_to_transcript(&mut self.transcript);
+        for round1 in self.received_round1_data.values() {
+            round1.add_to_transcript(&mut self.transcript);
             self.valid_participant_ids
-                .insert(round2.sender_ordinal, round2.sender_id);
+                .insert(round1.sender_ordinal, round1.sender_id);
         }
 
         let feldman_verifier_set: VecFeldmanVerifierSet<
@@ -95,12 +95,6 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
             return Err(Error::RoundError(
                 Round::Three,
                 "Sender didn't send any previous round 1 data".to_string(),
-            ));
-        }
-        if !self.received_round2_data.contains_key(&data.sender_ordinal) {
-            return Err(Error::RoundError(
-                Round::Three,
-                "Sender didn't send any previous round 2 data".to_string(),
             ));
         }
         if data.feldman_commitments.is_empty() {

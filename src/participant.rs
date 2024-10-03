@@ -1,6 +1,5 @@
 mod round0;
 mod round1;
-mod round2;
 mod round3;
 mod round4;
 
@@ -12,7 +11,7 @@ use std::{
 
 use crate::{
     DkgResult, Error, GroupHasher, Parameters, ParticipantType, Round, Round0Data, Round1Data,
-    Round2Data, Round3Data, Round4Data, RoundOutputGenerator,
+    Round3Data, Round4Data, RoundOutputGenerator,
 };
 use elliptic_curve::{group::GroupEncoding, Field, Group, PrimeField};
 use elliptic_curve_tools::*;
@@ -82,7 +81,6 @@ where
     pub(crate) powers_of_i: Vec<G::Scalar>,
     pub(crate) received_round0_data: BTreeMap<usize, Round0Data<G>>,
     pub(crate) received_round1_data: BTreeMap<usize, Round1Data<G>>,
-    pub(crate) received_round2_data: BTreeMap<usize, Round2Data<G>>,
     pub(crate) received_round3_data: BTreeMap<usize, Round3Data<G>>,
     pub(crate) received_round4_data: BTreeMap<usize, Round4Data<G>>,
     pub(crate) valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
@@ -110,7 +108,6 @@ where
             .field("powers_of_i", &self.powers_of_i)
             .field("received_round0_data", &self.received_round0_data)
             .field("received_round1_data", &self.received_round1_data)
-            .field("received_round2_data", &self.received_round2_data)
             .field("received_round3_data", &self.received_round3_data)
             .field("received_round4_data", &self.received_round4_data)
             .field("valid_participant_ids", &self.valid_participant_ids)
@@ -275,7 +272,6 @@ where
             powers_of_i,
             received_round0_data: BTreeMap::new(),
             received_round1_data: BTreeMap::new(),
-            received_round2_data: BTreeMap::new(),
             received_round3_data: BTreeMap::new(),
             received_round4_data: BTreeMap::new(),
             valid_participant_ids: BTreeMap::new(),
@@ -359,10 +355,6 @@ where
                 let round1_payload = postcard::from_bytes::<Round1Data<G>>(&data[1..])?;
                 self.receive_round1data(round1_payload)
             }
-            Round::Two => {
-                let round2_payload = postcard::from_bytes::<Round2Data<G>>(&data[1..])?;
-                self.receive_round2data(round2_payload)
-            }
             Round::Three => {
                 let round3_payload = postcard::from_bytes::<Round3Data<G>>(&data[1..])?;
                 self.receive_round3data(round3_payload)
@@ -383,7 +375,6 @@ where
         match self.round {
             Round::Zero => self.round0(),
             Round::One => self.round1(),
-            Round::Two => self.round2(),
             Round::Three => self.round3(),
             Round::Four => self.round4(),
             Round::Five => Err(Error::RoundError(

@@ -42,7 +42,8 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
         }
 
         self.valid_participant_ids.insert(self.ordinal, self.id);
-        self.round = Round::Two;
+        // self.round = Round::Two;
+        self.round = Round::Three;
 
         let pedersen_verifier_set: VecPedersenVerifierSet<
             SecretShare<G::Scalar>,
@@ -73,7 +74,13 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
     }
 
     pub(crate) fn receive_round1data(&mut self, data: Round1Data<G>) -> DkgResult<()> {
-        if self.round > Round::Two {
+        // if self.round > Round::Two {
+        //     return Err(Error::RoundError(
+        //         Round::One,
+        //         "Invalid round payload received".to_string(),
+        //     ));
+        // }
+        if self.round > Round::Three {
             return Err(Error::RoundError(
                 Round::One,
                 "Invalid round payload received".to_string(),
