@@ -4,7 +4,6 @@ use elliptic_curve_tools::*;
 use merlin::Transcript;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::marker::PhantomData;
 use std::{
     fmt::{self, Display, Formatter},
     iter::Iterator,
@@ -157,7 +156,7 @@ macro_rules! impl_participant_to_int {
 impl_participant_to_int!(u8, u16, u32, u128, usize);
 
 /// The round output for a participant
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ParticipantRoundOutput<G: GroupHasher + SumOfProducts + GroupEncoding + Default> {
     /// The participant ordinal to where the data should be sent
     pub dst_ordinal: usize,
@@ -165,8 +164,6 @@ pub struct ParticipantRoundOutput<G: GroupHasher + SumOfProducts + GroupEncoding
     pub dst_id: IdentifierPrimeField<G::Scalar>,
     /// The data to send
     pub data: Vec<u8>,
-    /// Marker for the group
-    pub _marker: PhantomData<G>,
 }
 
 impl<G: GroupHasher + GroupEncoding + SumOfProducts + Default> ParticipantRoundOutput<G> {
@@ -176,7 +173,6 @@ impl<G: GroupHasher + GroupEncoding + SumOfProducts + Default> ParticipantRoundO
             dst_ordinal,
             dst_id,
             data,
-            _marker: PhantomData,
         }
     }
 }
