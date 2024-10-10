@@ -89,6 +89,14 @@ where
     pub(crate) transcript: Transcript,
 }
 
+unsafe impl<I, G> Send for Participant<I, G>
+    where I: ParticipantImpl<G> + Default,
+          G: GroupHasher + SumOfProducts + GroupEncoding + Default {}
+
+unsafe impl<I, G> Sync for Participant<I, G>
+where I: ParticipantImpl<G> + Default,
+      G: GroupHasher + SumOfProducts + GroupEncoding + Default {}
+
 impl<I, G> Debug for Participant<I, G>
 where
     I: ParticipantImpl<G> + Default,
@@ -496,6 +504,9 @@ where
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct SecretParticipantImpl<G>(PhantomData<G>);
 
+unsafe impl<G> Send for SecretParticipantImpl<G> {}
+unsafe impl<G> Sync for SecretParticipantImpl<G> {}
+
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G>
     for SecretParticipantImpl<G>
 {
@@ -520,6 +531,9 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RefreshParticipantImpl<G>(PhantomData<G>);
 
+unsafe impl<G> Send for RefreshParticipantImpl<G> {}
+unsafe impl<G> Sync for RefreshParticipantImpl<G> {}
+
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G>
     for RefreshParticipantImpl<G>
 {
@@ -541,7 +555,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
 }
 
 /// A trait to allow for dynamic dispatch of the participant
-pub trait AnyParticipant<G>
+pub trait AnyParticipant<G>: Send + Sync
 where
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 {
