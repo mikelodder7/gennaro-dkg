@@ -17,18 +17,6 @@ impl GroupHasher for ProjectivePoint {
     }
 }
 
-// impl SumOfProducts for ProjectivePoint {
-//     fn sum_of_products(group: &[Self], field: &[Self::Scalar]) -> Self {
-//         sum_of_products_pippenger::<Scalar, ProjectivePoint, 4>(group, field)
-//     }
-// }
-//
-// impl AsLimbs<4> for Scalar {
-//     fn as_limbs(&self) -> [u64; 4] {
-//         scalar_primitive_to_limbs::<4, 8, NistP256>(*self)
-//     }
-// }
-
 impl ReduceWide<64> for Scalar {
     fn reduce_wide(okm: &[u8; 64]) -> Self {
         const MODULUS: NonZero<U512> = NonZero::from_uint(U512::from_be_hex("0000000000000000000000000000000000000000000000000000000000000000ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551"));

@@ -90,12 +90,18 @@ where
 }
 
 unsafe impl<I, G> Send for Participant<I, G>
-    where I: ParticipantImpl<G> + Default,
-          G: GroupHasher + SumOfProducts + GroupEncoding + Default {}
+where
+    I: ParticipantImpl<G> + Default,
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+{
+}
 
 unsafe impl<I, G> Sync for Participant<I, G>
-where I: ParticipantImpl<G> + Default,
-      G: GroupHasher + SumOfProducts + GroupEncoding + Default {}
+where
+    I: ParticipantImpl<G> + Default,
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+{
+}
 
 impl<I, G> Debug for Participant<I, G>
 where

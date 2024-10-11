@@ -17,18 +17,6 @@ impl GroupHasher for G2Projective {
     }
 }
 
-// impl SumOfProducts for G1Projective {
-//     fn sum_of_products(group: &[Self], field: &[Self::Scalar]) -> Self {
-//         G1Projective::sum_of_products(group, field)
-//     }
-// }
-//
-// impl SumOfProducts for G2Projective {
-//     fn sum_of_products(group: &[Self], field: &[Self::Scalar]) -> Self {
-//         G2Projective::sum_of_products(group, field)
-//     }
-// }
-
 impl ReduceWide<64> for Scalar {
     fn reduce_wide(wide: &[u8; 64]) -> Self {
         Scalar::from_bytes_wide(wide)
