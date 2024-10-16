@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
 repository = "https://github.com/mikelodder7/gennaro-dkg"
-version = "1.0.0-pre8"
+version = "1.0.0-pre9"
 
 [features]
 default = ["bls", "curve25519", "jubjub", "ed448", "k256", "p256", "p384"]
@@ -33,10 +33,10 @@ rand_chacha = "0.3"
 thiserror = "1.0"
 serde = "1.0"
 postcard = { version = "1.0", features = ["use-std"]}
-vsss-rs = { version = "5.0.0-rc0" }
+vsss-rs = { version = "5.0.0-rc1" }
 zeroize = "1"
 
-blsful = { version = "3.0.0-pre4", optional = true }
+blsful = { version = "3.0.0-pre5", optional = true }
 curve25519-dalek-ml = { version = "4.2", optional = true }
 ed448-goldilocks-plus = { version = "0.12", optional = true }
 jubjub-plus = { version = "0.10", optional = true }
@@ -58,4 +58,4 @@ rstest = "0.23"
 serde_bare = "0.5"
 serde-encrypt = "0.7"
 serde_json = "1.0"
-vsss-rs = { version = "5.0.0-rc0", features = ["curve25519"] }
+vsss-rs = { version = "5.0.0-rc1", features = ["curve25519"] }
