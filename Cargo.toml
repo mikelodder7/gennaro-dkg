@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
 repository = "https://github.com/mikelodder7/gennaro-dkg"
-version = "1.0.0-rc0"
+version = "1.0.0-rc1"
 
 [features]
 default = ["bls", "curve25519", "jubjub", "ed448", "k256", "p256", "p384"]
@@ -38,7 +38,7 @@ zeroize = "1"
 
 blsful = { version = "3.0.0-pre6", optional = true }
 curve25519-dalek-ml = { version = "4.2", optional = true }
-ed448-goldilocks-plus = { version = "0.12", optional = true }
+ed448-goldilocks-plus = { version = "0.13", optional = true }
 jubjub-plus = { version = "0.10", optional = true }
 k256 = { version = "0.13", features = ["arithmetic", "hash2curve", "bits"], optional = true }
 p256 = { version = "0.13", features = ["arithmetic", "hash2curve", "bits"], optional = true }
