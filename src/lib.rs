@@ -172,6 +172,7 @@ mod tests {
     #[case::blsg2(blsful::inner_types::G2Projective::default())]
     #[case::ed25519(vsss_rs::curve25519::WrappedEdwards::default())]
     #[case::ristretto(vsss_rs::curve25519::WrappedRistretto::default())]
+    #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::default())]
     fn one_corrupted_party<G: GroupHasher + GroupEncoding + SumOfProducts + Default>(
         #[case] _g: G,
     ) {
