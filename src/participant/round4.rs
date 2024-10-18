@@ -32,14 +32,19 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
         let og_secret = *secret_shares[self.ordinal].value;
         self.valid_participant_ids.clear();
 
+        let mut all_refresh = true;
+
         for (ordinal, round3) in &self.received_round3_data {
+            let participant_type = self.received_round1_data[ordinal].sender_type;
+            all_refresh &= matches!(participant_type, ParticipantType::Refresh);
             public_key += *round3.feldman_commitments[0];
             let r1data = &self.received_round2_data[ordinal];
             debug_assert_eq!(r1data.secret_share.identifier, self.id);
             secret_share += *r1data.secret_share.value;
         }
 
-        if public_key.is_identity().into() {
+        let public_key_identity = bool::from(public_key.is_identity());
+        if all_refresh && !public_key_identity || !all_refresh && public_key_identity {
             return Err(Error::RoundError(
                 Round::Four,
                 "The resulting public key is invalid".to_string(),

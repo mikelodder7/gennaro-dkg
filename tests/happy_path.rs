@@ -539,6 +539,74 @@ fn init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g
 }
 
 #[rstest]
+#[case::k256(k256::ProjectivePoint::IDENTITY)]
+#[case::p256(p256::ProjectivePoint::IDENTITY)]
+#[case::ed25519(WrappedEdwards::default())]
+#[case::ristretto25519(WrappedRistretto::default())]
+#[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
+#[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
+#[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+fn refresh<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g: G) {
+    const THRESHOLD: usize = 3;
+    const LIMIT: usize = 5;
+
+    let (participants, secret) = five_participants_init::<G>();
+
+    let threshold = NonZeroUsize::new(THRESHOLD).unwrap();
+    let limit = NonZeroUsize::new(LIMIT).unwrap();
+    let pids = participants.iter().map(|p| p.get_id()).collect::<Vec<_>>();
+    let seq = vec![ParticipantIdGeneratorType::list(&pids)];
+    let parameters = Parameters::<G>::new(threshold, limit, None, None, Some(seq));
+
+    let mut participants: [Box<dyn AnyParticipant<G>>; 5] = [
+        Box::new(RefreshParticipant::<G>::new(participants[0].get_id(), &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(participants[1].get_id(), &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(participants[2].get_id(), &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(participants[3].get_id(), &parameters).unwrap()),
+        Box::new(RefreshParticipant::<G>::new(participants[4].get_id(), &parameters).unwrap()),
+    ];
+
+    for _ in Round::range(Round::One, Round::Four) {
+        let round_generators = next_round(&mut participants);
+        receive(&mut participants, &round_generators);
+    }
+
+    for i in 1..participants.len() {
+        assert_eq!(
+            participants[i - 1].get_public_key().unwrap(),
+            participants[i].get_public_key().unwrap()
+        );
+    }
+
+    let shares = participants
+        .iter()
+        .map(|p| p.get_secret_share().unwrap())
+        .collect::<Vec<_>>();
+
+    let res = shares.combine();
+    assert!(res.is_ok());
+    let new_secret = res.unwrap();
+
+    assert_eq!(new_secret.0.is_zero().unwrap_u8(), 1);
+
+    let actual_pk = G::generator() * *new_secret;
+
+    assert_eq!(participants[0].get_public_key().unwrap(), actual_pk);
+
+    assert_eq!(
+        participants[0]
+            .get_public_key()
+            .unwrap()
+            .is_identity()
+            .unwrap_u8(),
+        1u8
+    );
+
+    // Old shared secret remains unchanged
+    assert_eq!(secret + *new_secret, secret);
+}
+
+#[rstest]
 #[case::k256(k256::ProjectivePoint::IDENTITY, 3)]
 #[case::p256(p256::ProjectivePoint::IDENTITY, 3)]
 #[case::ed25519(WrappedEdwards::default(), 3)]

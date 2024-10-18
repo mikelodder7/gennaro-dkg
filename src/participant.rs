@@ -54,10 +54,6 @@ where
     /// During a new or update key gen, this value is not the identity
     /// during a refresh, it must be identity
     fn check_feldman_verifier(verifier: G) -> bool;
-    /// Check the public key.
-    /// During a new or update key gen, this value is not the identity
-    /// during a refresh, it must be identity
-    fn check_public_key(key: G, computed: G) -> bool;
 }
 
 /// A DKG participant FSM
@@ -130,24 +126,10 @@ where
     }
 }
 
-impl<I, G> Participant<I, G>
+impl<G> Participant<SecretParticipantImpl<G>, G>
 where
-    I: ParticipantImpl<G> + Default,
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 {
-    /// Create a new participant to generate a new key share
-    pub fn new(id: IdentifierPrimeField<G::Scalar>, parameters: &Parameters<G>) -> DkgResult<Self> {
-        let rng = rand_core::OsRng;
-        let secret = I::random_value(rng);
-        let blinder = G::Scalar::random(rng);
-        Self::initialize(
-            id,
-            parameters,
-            IdentifierPrimeField(secret),
-            IdentifierPrimeField(blinder),
-        )
-    }
-
     /// Create a new participant with an existing secret.
     ///
     /// This allows the polynomial to be updated versus refreshing the shares.
@@ -162,6 +144,25 @@ where
         let secret = *old_share.value * *Self::lagrange(old_share, shares_ids);
         Self::initialize(
             new_identifier,
+            parameters,
+            IdentifierPrimeField(secret),
+            IdentifierPrimeField(blinder),
+        )
+    }
+}
+
+impl<I, G> Participant<I, G>
+where
+    I: ParticipantImpl<G> + Default,
+    G: GroupHasher + SumOfProducts + GroupEncoding + Default,
+{
+    /// Create a new participant to generate a new key share
+    pub fn new(id: IdentifierPrimeField<G::Scalar>, parameters: &Parameters<G>) -> DkgResult<Self> {
+        let rng = rand_core::OsRng;
+        let secret = I::random_value(rng);
+        let blinder = G::Scalar::random(rng);
+        Self::initialize(
+            id,
             parameters,
             IdentifierPrimeField(secret),
             IdentifierPrimeField(blinder),
@@ -527,10 +528,6 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
     fn check_feldman_verifier(verifier: G) -> bool {
         verifier.is_identity().unwrap_u8() == 0u8
     }
-
-    fn check_public_key(key: G, computed: G) -> bool {
-        key.is_identity().unwrap_u8() == 0u8 && key != computed
-    }
 }
 
 /// Refresh Participant Implementation
@@ -553,10 +550,6 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> ParticipantImpl<G
 
     fn check_feldman_verifier(verifier: G) -> bool {
         verifier.is_identity().into()
-    }
-
-    fn check_public_key(key: G, computed: G) -> bool {
-        (key.is_identity() & computed.is_identity()).into()
     }
 }
 
