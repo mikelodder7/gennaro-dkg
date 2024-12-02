@@ -373,13 +373,6 @@ pub struct Round1Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     pub(crate) feldman_commitment_hash: [u8; 32],
 }
 
-#[cfg(test)]
-impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
-    serde_encrypt::traits::SerdeEncryptSharedKey for Round1Data<G>
-{
-    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
-}
-
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round1Data<G> {
     /// Add the payload to the transcript
     pub fn add_to_transcript(&self, transcript: &mut Transcript) {
@@ -420,13 +413,6 @@ pub struct Round2Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     pub blind_share: SecretShare<G::Scalar>,
 }
 
-#[cfg(test)]
-impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
-    serde_encrypt::traits::SerdeEncryptSharedKey for Round2Data<G>
-{
-    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
-}
-
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round2Data<G> {
     /// Add the payload to the transcript
     pub fn add_to_transcript(&self, transcript: &mut Transcript) {
@@ -464,13 +450,6 @@ pub struct Round3Data<G: GroupHasher + GroupEncoding + Default> {
     pub valid_participant_ids: BTreeMap<usize, IdentifierPrimeField<G::Scalar>>,
 }
 
-#[cfg(test)]
-impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
-    serde_encrypt::traits::SerdeEncryptSharedKey for Round3Data<G>
-{
-    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
-}
-
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Round3Data<G> {
     /// Add the payload to the transcript
     pub fn add_to_transcript(&self, transcript: &mut Transcript) {
@@ -502,13 +481,6 @@ pub struct Round4Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     #[serde(bound(serialize = "ValueGroup<G>: Serialize"))]
     #[serde(bound(deserialize = "ValueGroup<G>: Deserialize<'de>"))]
     pub public_key: ValueGroup<G>,
-}
-
-#[cfg(test)]
-impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default>
-    serde_encrypt::traits::SerdeEncryptSharedKey for Round4Data<G>
-{
-    type S = serde_encrypt::serialize::impls::BincodeSerializer<Self>;
 }
 
 #[test]

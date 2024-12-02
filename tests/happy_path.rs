@@ -20,6 +20,7 @@ use vsss_rs::{
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn static_init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g: G) {
     let rng = ChaCha8Rng::from_seed([0u8; 32]);
     static_numbering_init_dkg::<G>(rng);
@@ -33,6 +34,7 @@ fn static_init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[c
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn static_add_participant_same_threshold<
     G: GroupHasher + GroupEncoding + SumOfProducts + Default,
 >(
@@ -50,6 +52,7 @@ fn static_add_participant_same_threshold<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn static_add_participant_increase_threshold<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -67,6 +70,7 @@ fn static_add_participant_increase_threshold<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::default())]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::default())]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn static_remove_participant_same_threshold<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -84,6 +88,7 @@ fn static_remove_participant_same_threshold<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::default())]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::default())]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::default())]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn static_remove_participant_decrease_threshold<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -101,6 +106,7 @@ fn static_remove_participant_decrease_threshold<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 5)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 5)]
 fn static_add_and_remove_participant_increase_participant<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -118,6 +124,7 @@ fn static_add_and_remove_participant_increase_participant<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 3)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 3)]
 fn static_add_and_remove_participant_decrease_participant<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -534,6 +541,7 @@ where
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g: G) {
     five_participants_init::<G>();
 }
@@ -546,6 +554,7 @@ fn init_dkg<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY)]
 fn refresh<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g: G) {
     const THRESHOLD: usize = 3;
     const LIMIT: usize = 5;
@@ -614,6 +623,7 @@ fn refresh<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(#[case] _g:
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 3)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 3)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 3)]
 fn add_participant_same_threshold<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
@@ -630,6 +640,7 @@ fn add_participant_same_threshold<G: GroupHasher + SumOfProducts + GroupEncoding
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 5)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 5)]
 fn add_participant_increase_threshold<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
@@ -646,6 +657,7 @@ fn add_participant_increase_threshold<G: GroupHasher + SumOfProducts + GroupEnco
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 3)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 3)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 3)]
 fn remove_participant_same_threshold<G: GroupHasher + SumOfProducts + GroupEncoding + Default>(
     #[case] _g: G,
     #[case] threshold: usize,
@@ -662,6 +674,7 @@ fn remove_participant_same_threshold<G: GroupHasher + SumOfProducts + GroupEncod
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 2)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 2)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 2)]
 fn remove_participant_decrease_threshold<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -679,6 +692,7 @@ fn remove_participant_decrease_threshold<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 5)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 2)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 5)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 5)]
 fn add_and_remove_participant_increase_participant<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(
@@ -696,6 +710,7 @@ fn add_and_remove_participant_increase_participant<
 #[case::bls12_381_g1(blsful::inner_types::G1Projective::IDENTITY, 3)]
 #[case::bls12_381_g2(blsful::inner_types::G2Projective::IDENTITY, 4)]
 #[case::ed448(ed448_goldilocks_plus::EdwardsPoint::IDENTITY, 3)]
+#[case::jubjub(jubjub_plus::SubgroupPoint::IDENTITY, 3)]
 fn add_and_remove_participant_decrease_participant<
     G: GroupHasher + SumOfProducts + GroupEncoding + Default,
 >(

@@ -4,8 +4,15 @@ use jubjub_plus::{ExtendedPoint, Scalar, SubgroupPoint};
 
 impl GroupHasher for SubgroupPoint {
     fn hash_to_curve(msg: &[u8]) -> Self {
-        const DST: &[u8] = b"jubjub_XMD:SHA-256_SSWU_RO_";
+        const DST: &[u8] = b"jubjub_XMD:SHA-256_HP_RO_";
         SubgroupPoint::from(ExtendedPoint::hash::<ExpandMsgXmd<sha2::Sha256>>(msg, DST))
+    }
+}
+
+impl GroupHasher for ExtendedPoint {
+    fn hash_to_curve(msg: &[u8]) -> Self {
+        const DST: &[u8] = b"jubjub_XMD:SHA-256_HP_RO_";
+        ExtendedPoint::hash::<ExpandMsgXmd<sha2::Sha256>>(msg, DST)
     }
 }
 

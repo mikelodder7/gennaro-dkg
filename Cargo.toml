@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 name = "gennaro-dkg"
 readme = "README.md"
 repository = "https://github.com/mikelodder7/gennaro-dkg"
-version = "1.0.0-rc1"
+version = "1.0.0-rc2"
 
 [features]
 default = ["bls", "curve25519", "jubjub", "ed448", "k256", "p256", "p384"]
@@ -26,17 +26,15 @@ jubjub = ["jubjub-plus", "sha2"]
 anyhow = "1.0"
 elliptic-curve = { version = "0.13", features = ["hash2curve"] }
 elliptic-curve-tools = { version = "0.1", features = ["std"] }
-data-encoding = "2.6"
 merlin = "3"
 rand_core = { version = "0.6", features = ["std"] }
 rand_chacha = "0.3"
-thiserror = "1.0"
+thiserror = "2.0"
 serde = "1.0"
-postcard = { version = "1.0", features = ["use-std"]}
-vsss-rs = { version = "5.0.0-rc1" }
-zeroize = "1"
+postcard = { version = "1.1", features = ["use-std"]}
+vsss-rs = { version = "5.0.0-rc2" }
 
-blsful = { version = "3.0.0-pre6", optional = true }
+blsful = { version = "3.0.0-pre7", optional = true }
 curve25519-dalek-ml = { version = "4.2", optional = true }
 ed448-goldilocks-plus = { version = "0.13", optional = true }
 jubjub-plus = { version = "0.10", optional = true }
@@ -48,14 +46,11 @@ sha3 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 blsful = "3.0.0-pre6"
-ed448-goldilocks-plus = "0.12"
+ed448-goldilocks-plus = "0.13"
 k256 = { version = "0.13", features = ["arithmetic"] }
 p256 = { version = "0.13", features = ["arithmetic"] }
 p384 = { version = "0.13", features = ["arithmetic"] }
 rand_chacha = "0.3"
 rand_core = "0.6"
 rstest = "0.23"
-serde_bare = "0.5"
-serde-encrypt = "0.7"
-serde_json = "1.0"
-vsss-rs = { version = "5.0.0-rc1", features = ["curve25519"] }
+vsss-rs = { version = "5.0.0-rc2", features = ["curve25519"] }
