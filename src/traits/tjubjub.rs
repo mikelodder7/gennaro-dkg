@@ -1,3 +1,4 @@
+//! Extensions for jubjub
 use crate::traits::*;
 use elliptic_curve::hash2curve::ExpandMsgXmd;
 use jubjub_plus::{ExtendedPoint, Scalar, SubgroupPoint};

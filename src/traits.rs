@@ -4,7 +4,8 @@ pub mod tbls;
 pub mod ted25519;
 #[cfg(feature = "ed448")]
 pub mod ted448;
-mod tjubjub;
+#[cfg(feature = "jubjub")]
+pub mod tjubjub;
 #[cfg(feature = "k256")]
 pub mod tk256;
 #[cfg(feature = "p256")]
