@@ -82,7 +82,9 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
                 sender_id: self.id,
                 transcript_hash,
                 public_key: self.public_key,
-                computed_secret_commitment: ValueGroup(G::generator() * self.secret_share.value.0),
+                computed_secret_commitment: ValueGroup(
+                    self.message_generator * self.secret_share.value.0,
+                ),
             },
         );
         Ok(RoundOutputGenerator::Round4(Round4OutputGenerator {
@@ -91,7 +93,9 @@ impl<I: ParticipantImpl<G> + Default, G: GroupHasher + SumOfProducts + GroupEnco
             sender_id: self.id,
             transcript_hash,
             public_key: self.public_key,
-            computed_secret_commitment: ValueGroup(G::generator() * self.secret_share.value.0),
+            computed_secret_commitment: ValueGroup(
+                self.message_generator * self.secret_share.value.0,
+            ),
         }))
     }
 
