@@ -2,6 +2,7 @@ mod round1;
 mod round2;
 mod round3;
 mod round4;
+mod round5;
 
 use std::{
     collections::BTreeMap,
@@ -68,6 +69,7 @@ where
     pub(crate) threshold: usize,
     pub(crate) limit: usize,
     pub(crate) round: Round,
+    pub(crate) completed: bool,
     pub(crate) components: InnerPedersenResult<G::Scalar, G>,
     pub(crate) secret_share: SecretShare<G::Scalar>,
     pub(crate) blind_share: SecretShare<G::Scalar>,
@@ -277,6 +279,7 @@ where
             id,
             threshold: parameters.threshold,
             limit: parameters.limit,
+            completed: false,
             round: Round::One,
             components,
             secret_share: SecretShare::<G::Scalar>::default(),
@@ -308,7 +311,7 @@ where
 
     /// Returns true if this secret_participant is complete
     pub fn completed(&self) -> bool {
-        self.round == Round::Five
+        self.completed
     }
 
     /// Return the current round
@@ -330,7 +333,7 @@ where
     /// This value is useless until at least 2 rounds have been run
     /// so [`None`] is returned until completion
     pub fn get_secret_share(&self) -> Option<SecretShare<G::Scalar>> {
-        if self.round >= Round::Five {
+        if self.completed {
             Some(self.secret_share)
         } else {
             None
@@ -341,7 +344,7 @@ where
     /// This value is useless until all rounds have been run
     /// so [`None`] is returned until completion
     pub fn get_public_key(&self) -> Option<G> {
-        if self.round == Round::Five {
+        if self.completed {
             Some(*self.public_key)
         } else {
             None
@@ -410,10 +413,7 @@ where
             Round::Two => self.round2(),
             Round::Three => self.round3(),
             Round::Four => self.round4(),
-            Round::Five => Err(Error::RoundError(
-                Round::Five,
-                "nothing more to run".to_string(),
-            )),
+            Round::Five => self.round5(),
         }
     }
 

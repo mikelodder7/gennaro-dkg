@@ -25,50 +25,6 @@ pub enum Round {
     Five,
 }
 
-impl Round {
-    /// Return a round iterator starting at this round
-    pub fn iter(&self) -> RoundIter {
-        RoundIter {
-            current: *self,
-            end: Round::Five,
-        }
-    }
-
-    /// Return a range of rounds that begin with `start` and end with `stop` inclusively.
-    pub fn range(start: Round, stop: Round) -> RoundIter {
-        RoundIter {
-            current: start,
-            end: stop,
-        }
-    }
-}
-
-/// The round iterator
-pub struct RoundIter {
-    current: Round,
-    end: Round,
-}
-
-impl Iterator for RoundIter {
-    type Item = Round;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.current <= self.end {
-            let current = self.current;
-            self.current = match self.current {
-                Round::One => Round::Two,
-                Round::Two => Round::Three,
-                Round::Three => Round::Four,
-                Round::Four => Round::Five,
-                Round::Five => Round::Five,
-            };
-            Some(current)
-        } else {
-            None
-        }
-    }
-}
-
 impl Display for Round {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -190,7 +146,7 @@ pub enum RoundOutputGenerator<G: GroupHasher + SumOfProducts + GroupEncoding + D
     /// Round 4 output generator
     Round4(Round4OutputGenerator<G>),
     /// The public key
-    Round5(Round4OutputGenerator<G>),
+    Round5,
 }
 
 impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenerator<G> {
@@ -264,6 +220,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     sender_id: data.sender_id,
                     transcript_hash: data.transcript_hash,
                     public_key: data.public_key,
+                    computed_secret_commitment: data.computed_secret_commitment,
                 };
                 let mut output =
                     postcard::to_stdvec(&round4_output_data).expect("to serialize into a bytes");
@@ -275,16 +232,7 @@ impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> RoundOutputGenera
                     Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
                 }))
             }
-            Self::Round5(data) => {
-                let mut output = data.public_key.to_bytes().as_ref().to_vec();
-                output.insert(0, u8::from(Round::Five));
-                Box::new(data.participant_ids.iter().filter_map(move |(index, id)| {
-                    if *index == data.sender_ordinal {
-                        return None;
-                    }
-                    Some(ParticipantRoundOutput::new(*index, *id, output.clone()))
-                }))
-            }
+            Self::Round5 => Box::new(std::iter::empty()),
         }
     }
 }
@@ -355,6 +303,8 @@ pub struct Round4OutputGenerator<G: GroupHasher + GroupEncoding + Default> {
     pub(crate) transcript_hash: [u8; 32],
     /// The computed public key
     pub(crate) public_key: ValueGroup<G>,
+    /// A commitment to the actual computed final secret share
+    pub(crate) computed_secret_commitment: ValueGroup<G>,
 }
 
 /// Broadcast data for Round 0
@@ -481,6 +431,13 @@ pub struct Round4Data<G: GroupHasher + SumOfProducts + GroupEncoding + Default> 
     #[serde(bound(serialize = "ValueGroup<G>: Serialize"))]
     #[serde(bound(deserialize = "ValueGroup<G>: Deserialize<'de>"))]
     pub public_key: ValueGroup<G>,
+    /// A commitment to the actual computed secret share result
+    /// This is a final check that the secret share is valid
+    /// AND when combined with the other participants' secret shares
+    /// will result in the correct public key.
+    #[serde(bound(serialize = "ValueGroup<G>: Serialize"))]
+    #[serde(bound(deserialize = "ValueGroup<G>: Deserialize<'de>"))]
+    pub computed_secret_commitment: ValueGroup<G>,
 }
 
 #[test]

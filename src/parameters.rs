@@ -16,7 +16,7 @@ pub struct Parameters<'a, G: GroupHasher + SumOfProducts + GroupEncoding + Defau
         Vec<ParticipantIdGeneratorType<'a, IdentifierPrimeField<G::Scalar>>>,
 }
 
-impl<'a, G: GroupHasher + SumOfProducts + GroupEncoding + Default> Default for Parameters<'a, G> {
+impl<G: GroupHasher + SumOfProducts + GroupEncoding + Default> Default for Parameters<'_, G> {
     fn default() -> Self {
         Self {
             threshold: 0,

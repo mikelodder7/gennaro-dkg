@@ -2,16 +2,7 @@
 //!
 //! The algorithm uses participants with unique identifiers
 //! and each party communicates broadcast data and peer-to-peer
-//! data depending on the round. Round 1 generates secret_participant key shares
-//! which are checked for correctness in round 2. Any secret_participant that fails
-//! in round 2 is dropped from the valid set which is communicated in round 3.
-//! Round 4 communicates only with the remaining valid participants
-//! and computes the secret share and verification key. Round 5 checks that
-//! all participants computed the same verification key.
-//!
-//! The idea is that Rounds 3 and 5 serve as echo broadcasts to check the
-//! state of all valid participants. If an error occurs in any round, then
-//! participants either drop invalid participants or abort.
+//! data depending on the round.
 //!
 //! The full paper can be found is
 //! [GennaroDKG](https://link.springer.com/article/10.1007/s00145-006-0347-3).
@@ -75,7 +66,7 @@
 //! ];
 //!
 //! // Run all rounds
-//! for _ in Round::range(Round::One, Round::Four) {
+//! for _ in [Round::One, Round::Two, Round::Three, Round::Four, Round::Five] {
 //!    let generators = next_round(&mut participants);
 //!    receive(&mut participants, generators);
 //! }
@@ -200,14 +191,14 @@ mod tests {
             .map(|id| SecretParticipant::<G>::new(id, &parameters).unwrap())
             .collect::<Vec<_>>();
 
-        for _ in Round::range(Round::One, Round::Two) {
+        for _ in [Round::One, Round::Two] {
             let generators = next_round(&mut participants);
             receive(&mut participants, generators);
         }
 
         // Corrupt bad actor
         participants.remove(BAD_ID - 1);
-        for _ in Round::range(Round::Three, Round::Four) {
+        for _ in [Round::Three, Round::Four, Round::Five] {
             let generators = next_round(&mut participants);
             receive(&mut participants, generators);
         }
