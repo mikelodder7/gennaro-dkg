@@ -1,7 +1,7 @@
 use crate::{
     DkgResult, Error, GroupHasher, Participant, ParticipantImpl, Round, RoundOutputGenerator,
 };
-use blsful::inner_types::GroupEncoding;
+use elliptic_curve::group::GroupEncoding;
 use elliptic_curve_tools::SumOfProducts;
 use vsss_rs::{DefaultShare, ReadableShareSet};
 
